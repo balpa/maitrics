@@ -22,8 +22,10 @@ profile
 # Superpowers brainstorm sessions
 .superpowers/
 
+# Build output
+dist/
+
 # Archives & Distribution
 *.dmg
-*.app
 *.dSYM.zip
 *.dSYM
