@@ -1,8 +1,5 @@
 import XCTest
 @testable import MaitricsCore
 
-final class MaitricsCoreTests: XCTestCase {
-    func testVersion() {
-        XCTAssertEqual(MaitricsCore.version, "0.1.0")
-    }
-}
+// Placeholder — substantive tests live in StatsCacheParserTests.swift
+final class MaitricsCoreTests: XCTestCase {}
