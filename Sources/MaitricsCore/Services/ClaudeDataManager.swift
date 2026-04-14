@@ -1,6 +1,5 @@
 import Foundation
 
-@available(macOS 14.0, *)
 @Observable
 public final class ClaudeDataManager {
     public private(set) var statsCache: StatsCache?
