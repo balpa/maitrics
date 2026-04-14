@@ -23,7 +23,6 @@ struct PopoverContentView: View {
                         ModelBreakdownView(models: dataManager.modelBreakdown)
                         Divider().opacity(0.06)
                         UsageTrendChartView(
-                            dailyTotals: dataManager.dailyTotals(days: 7),
                             allDailyTotals: dataManager.dailyTotals(days: nil)
                         )
                         Divider().opacity(0.06)

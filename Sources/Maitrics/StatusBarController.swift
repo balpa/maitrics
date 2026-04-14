@@ -7,6 +7,7 @@ final class StatusBarController {
     private var popover: NSPopover!
     private var fileWatcher: FileWatcher?
     private var eventMonitor: Any?
+    private var settingsWindow: NSWindow?
     let dataManager: ClaudeDataManager
     let settings: AppSettings
 
@@ -75,7 +76,7 @@ final class StatusBarController {
 
     @objc private func togglePopover() {
         if popover.isShown {
-            popover.performClose(nil)
+            closePopover()
         } else {
             dataManager.refresh()
             updateIcon()
@@ -83,22 +84,30 @@ final class StatusBarController {
                 popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             }
             eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-                self?.popover.performClose(nil)
+                self?.closePopover()
             }
         }
     }
 
-    private func openSettings() {
+    private func closePopover() {
         popover.performClose(nil)
-        let settingsWindow = NSWindow(
+        if let eventMonitor {
+            NSEvent.removeMonitor(eventMonitor)
+            self.eventMonitor = nil
+        }
+    }
+
+    private func openSettings() {
+        closePopover()
+        settingsWindow = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 450, height: 500),
             styleMask: [.titled, .closable],
             backing: .buffered, defer: false
         )
-        settingsWindow.title = "Maitrics Settings"
-        settingsWindow.center()
-        settingsWindow.contentViewController = NSHostingController(rootView: SettingsView(settings: settings))
-        settingsWindow.makeKeyAndOrderFront(nil)
+        settingsWindow?.title = "Maitrics Settings"
+        settingsWindow?.center()
+        settingsWindow?.contentViewController = NSHostingController(rootView: SettingsView(settings: settings))
+        settingsWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 }

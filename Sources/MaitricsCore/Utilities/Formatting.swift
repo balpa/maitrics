@@ -19,10 +19,14 @@ public enum Formatting {
         return "$0.00"
     }
 
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .abbreviated
+        return f
+    }()
+
     public static func timeAgo(_ date: Date) -> String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: date, relativeTo: Date())
+        relativeFormatter.localizedString(for: date, relativeTo: Date())
     }
 
     public static func shortModelName(_ modelId: String) -> String {

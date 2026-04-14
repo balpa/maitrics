@@ -20,36 +20,36 @@ public final class FileWatcher {
             startWatchingParent()
             return
         }
+        let fd = fileDescriptor
         let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fileDescriptor,
+            fileDescriptor: fd,
             eventMask: [.write, .rename, .delete],
             queue: .main
         )
         source.setEventHandler { [weak self] in self?.onChange() }
-        source.setCancelHandler { [weak self] in
-            guard let self, self.fileDescriptor >= 0 else { return }
-            close(self.fileDescriptor)
-            self.fileDescriptor = -1
+        source.setCancelHandler {
+            close(fd)
         }
         source.resume()
         self.source = source
     }
 
     public func stop() {
-        source?.cancel()
-        source = nil
-        if fileDescriptor >= 0 {
-            close(fileDescriptor)
-            fileDescriptor = -1
+        if let source {
+            source.cancel()
+            self.source = nil
         }
+        // FD is closed by the cancel handler — don't double-close
+        fileDescriptor = -1
     }
 
     private func startWatchingParent() {
         let parentPath = (path as NSString).deletingLastPathComponent
         fileDescriptor = open(parentPath, O_EVTONLY)
         guard fileDescriptor >= 0 else { return }
+        let fd = fileDescriptor
         let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fileDescriptor,
+            fileDescriptor: fd,
             eventMask: [.write],
             queue: .main
         )
@@ -61,10 +61,8 @@ public final class FileWatcher {
                 self.onChange()
             }
         }
-        source.setCancelHandler { [weak self] in
-            guard let self, self.fileDescriptor >= 0 else { return }
-            close(self.fileDescriptor)
-            self.fileDescriptor = -1
+        source.setCancelHandler {
+            close(fd)
         }
         source.resume()
         self.source = source

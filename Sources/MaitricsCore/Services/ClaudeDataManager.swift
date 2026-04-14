@@ -9,6 +9,7 @@ public final class ClaudeDataManager {
     public private(set) var error: String?
 
     private let settings: AppSettings
+    private var sessionTokenCache: [String: (mtime: Date, usage: SessionTokenUsage)] = [:]
 
     public init(settings: AppSettings = AppSettings()) {
         self.settings = settings
@@ -77,43 +78,72 @@ public final class ClaudeDataManager {
         isLoading = true
         error = nil
 
-        do {
-            statsCache = try StatsCacheParser.parse(fileURL: settings.statsCachePath)
-        } catch {
-            if FileManager.default.fileExists(atPath: settings.statsCachePath.path) {
-                self.error = "Failed to parse stats: \(error.localizedDescription)"
-            }
-        }
+        Task.detached { [weak self] in
+            guard let self else { return }
+            let settings = self.settings
 
-        do {
-            let discovered = try SessionDiscovery.discoverSessions(claudeProjectsDir: settings.projectsPath)
-            let topSessions = Array(discovered.prefix(5))
-            recentSessions = topSessions.map { session in
-                var tokenUsage: SessionTokenUsage?
-                if let path = session.jsonlPath {
-                    tokenUsage = try? SessionParser.parseTokenUsage(fileURL: URL(fileURLWithPath: path))
+            // Parse stats cache
+            var newStatsCache: StatsCache?
+            var newError: String?
+            do {
+                newStatsCache = try StatsCacheParser.parse(fileURL: settings.statsCachePath)
+            } catch {
+                if FileManager.default.fileExists(atPath: settings.statsCachePath.path) {
+                    newError = "Failed to parse stats: \(error.localizedDescription)"
                 }
-                let cost = tokenUsage.map { CostCalculator.cost(for: $0, customPricing: settings.customPricing) } ?? 0
-                let totalTokens = tokenUsage?.totalTokens ?? 0
-                return RecentSession(
-                    sessionId: session.sessionId,
-                    firstPrompt: session.firstPrompt,
-                    projectName: session.projectName,
-                    gitBranch: session.gitBranch,
-                    modified: session.modified,
-                    totalTokens: totalTokens,
-                    estimatedCost: cost
-                )
             }
-        } catch {
-            // Non-fatal
-        }
 
-        lastRefresh = Date()
-        isLoading = false
+            // Discover sessions
+            var newSessions: [RecentSession] = []
+            if let discovered = try? SessionDiscovery.discoverSessions(claudeProjectsDir: settings.projectsPath) {
+                let topSessions = Array(discovered.prefix(5))
+                newSessions = topSessions.map { session in
+                    let tokenUsage = self.cachedTokenUsage(for: session, settings: settings)
+                    let cost = tokenUsage.map { CostCalculator.cost(for: $0, customPricing: settings.customPricing) } ?? 0
+                    let totalTokens = tokenUsage?.totalTokens ?? 0
+                    return RecentSession(
+                        sessionId: session.sessionId,
+                        firstPrompt: session.firstPrompt,
+                        projectName: session.projectName,
+                        gitBranch: session.gitBranch,
+                        modified: session.modified,
+                        totalTokens: totalTokens,
+                        estimatedCost: cost
+                    )
+                }
+            }
+
+            let finalStats = newStatsCache
+            let finalSessions = newSessions
+            let finalError = newError
+            await MainActor.run {
+                self.statsCache = finalStats
+                self.recentSessions = finalSessions
+                if let finalError { self.error = finalError }
+                self.lastRefresh = Date()
+                self.isLoading = false
+            }
+        }
     }
 
     // MARK: - Helpers
+
+    /// Cache session JSONL parsing — only re-parse when file mtime changes
+    private func cachedTokenUsage(for session: DiscoveredSession, settings: AppSettings) -> SessionTokenUsage? {
+        guard let path = session.jsonlPath else { return nil }
+        let fileURL = URL(fileURLWithPath: path)
+
+        let fm = FileManager.default
+        let mtime = (try? fm.attributesOfItem(atPath: path))?[.modificationDate] as? Date ?? Date.distantPast
+
+        if let cached = sessionTokenCache[session.sessionId], cached.mtime == mtime {
+            return cached.usage
+        }
+
+        guard let usage = try? SessionParser.parseTokenUsage(fileURL: fileURL) else { return nil }
+        sessionTokenCache[session.sessionId] = (mtime: mtime, usage: usage)
+        return usage
+    }
 
     private func estimateDailyCost(dailyTokens: [String: Int], modelUsage: [String: ModelUsage]) -> Double {
         dailyTokens.reduce(0.0) { total, pair in

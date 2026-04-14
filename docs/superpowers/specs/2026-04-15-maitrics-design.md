@@ -11,7 +11,7 @@ Maitrics is a native macOS menu bar utility that reads Claude Code's local usage
 - **Language:** Swift
 - **UI Framework:** SwiftUI (popup content) + AppKit (menu bar integration via `NSStatusItem` + `NSPopover`)
 - **Charts:** Swift Charts (requires macOS 13+)
-- **Minimum Target:** macOS 13 (Ventura)
+- **Minimum Target:** macOS 14 (Sonoma) — required for @Observable and @Bindable
 - **Distribution:** DMG installer
 - **App Type:** Menu bar only — no dock icon, no main window (`LSUIElement = true`)
 

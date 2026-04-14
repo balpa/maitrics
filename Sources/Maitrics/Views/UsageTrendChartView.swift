@@ -3,9 +3,14 @@ import Charts
 import MaitricsCore
 
 struct UsageTrendChartView: View {
-    let dailyTotals: [(date: Date, tokens: Int)]
     let allDailyTotals: [(date: Date, tokens: Int)]
     @State private var selectedRange = 0
+
+    private static let dayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
 
     private var displayData: [(date: Date, tokens: Int)] {
         switch selectedRange {
@@ -21,9 +26,7 @@ struct UsageTrendChartView: View {
     }
 
     private var todayString: String {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        return f.string(from: Date())
+        Self.dayFormatter.string(from: Date())
     }
 
     var body: some View {
@@ -42,9 +45,7 @@ struct UsageTrendChartView: View {
             }
 
             Chart(displayData, id: \.date) { item in
-                let f = DateFormatter()
-                let _ = f.dateFormat = "yyyy-MM-dd"
-                let isToday = f.string(from: item.date) == todayString
+                let isToday = Self.dayFormatter.string(from: item.date) == todayString
 
                 BarMark(
                     x: .value("Date", item.date, unit: .day),
@@ -58,7 +59,7 @@ struct UsageTrendChartView: View {
                 .cornerRadius(3)
             }
             .chartXAxis {
-                AxisMarks(values: .stride(by: .day)) { _ in
+                AxisMarks(values: .automatic) { _ in
                     AxisValueLabel(format: .dateTime.weekday(.abbreviated))
                         .foregroundStyle(Color(white: 0.35))
                         .font(.system(size: 8))
