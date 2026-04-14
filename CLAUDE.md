@@ -9,31 +9,42 @@ Maitrics is a native macOS menu bar app (Swift + SwiftUI) that displays Claude C
 ## Build & Run
 
 ```bash
-# Build from command line
-xcodebuild -project Maitrics.xcodeproj -scheme Maitrics -configuration Debug build
+# Build debug
+swift build
 
-# Build release
-xcodebuild -project Maitrics.xcodeproj -scheme Maitrics -configuration Release build
+# Build release + .app bundle
+Scripts/build-app.sh release
 
-# Run after build
-open build/Debug/Maitrics.app
-# or
-open build/Release/Maitrics.app
+# Run the app
+open dist/Maitrics.app
+
+# Run tests (requires Xcode — not just CommandLineTools)
+swift test
+
+# Create DMG installer
+Scripts/create-dmg.sh 0.1.0
 ```
 
 ## Architecture
 
-- **Target:** macOS 13+ (Ventura), menu bar only (`LSUIElement = true`)
+- **Target:** macOS 14+ (Sonoma), menu bar only (`LSUIElement = true`)
+- **Build System:** Swift Package Manager (Package.swift)
 - **UI:** SwiftUI views hosted in an `NSPopover` attached to `NSStatusItem`
 - **Charts:** Swift Charts framework
 - **Data:** Reads `~/.claude/stats-cache.json` and per-project `sessions-index.json` files
-- **Reactivity:** `@Observable` data manager + FSEvents file watcher on `~/.claude/`
+- **Reactivity:** `@Observable` data manager + DispatchSource file watcher on `~/.claude/stats-cache.json`
+
+### Two targets
+- `MaitricsCore` (library) — all testable business logic: JSON parsing, cost calculation, data management, file watching, formatting
+- `Maitrics` (executable) — AppKit menu bar controller + SwiftUI views
 
 ### Key Components
-- `MaitricsApp` — App entry point, creates StatusBarController
-- `StatusBarController` — Owns NSStatusItem + NSPopover, manages icon color
-- `ClaudeDataManager` — Parses Claude data files, publishes observable state
-- `FileWatcher` — Watches ~/.claude/ for changes via DispatchSource/FSEvents
+- `MaitricsApp` — App entry point with `@NSApplicationDelegateAdaptor`, creates StatusBarController
+- `StatusBarController` — Owns NSStatusItem + NSPopover, manages icon color thresholds, file watcher
+- `ClaudeDataManager` (`@Observable`) — Orchestrates all data parsing, async refresh on background thread
+- `CostCalculator` — Estimates costs from token counts using configurable per-model pricing
+- `SessionDiscovery` — Scans `~/.claude/projects/` for sessions (index-based or JSONL fallback)
+- `FileWatcher` — DispatchSource-based monitoring of stats-cache.json with parent-dir fallback
 
 ## Git Rules
 
