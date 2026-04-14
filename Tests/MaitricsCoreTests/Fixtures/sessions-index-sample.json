@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "sessionId": "96176827-8c1f-4081-ba5e-137450a7e4f9",
+      "fullPath": "/Users/test/.claude/projects/-test-project/96176827.jsonl",
+      "fileMtime": 1769766980209,
+      "firstPrompt": "Fix authentication bug in login flow",
+      "messageCount": 42,
+      "created": "2026-04-01T09:55:16.704Z",
+      "modified": "2026-04-01T10:56:20.184Z",
+      "gitBranch": "main",
+      "projectPath": "/Users/test/project",
+      "isSidechain": false
+    },
+    {
+      "sessionId": "aaaa1111-2222-3333-4444-555566667777",
+      "fullPath": "/Users/test/.claude/projects/-test-project/aaaa1111.jsonl",
+      "fileMtime": 1769766000000,
+      "firstPrompt": "Add dark mode support to dashboard",
+      "messageCount": 15,
+      "created": "2026-04-01T14:00:00.000Z",
+      "modified": "2026-04-01T14:30:00.000Z",
+      "gitBranch": "feat/dark-mode",
+      "projectPath": "/Users/test/project",
+      "isSidechain": false
+    }
+  ],
+  "originalPath": "/Users/test/project"
+}
