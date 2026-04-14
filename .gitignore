@@ -1,0 +1,25 @@
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+xcuserdata/
+
+# macOS
+.DS_Store
+*.swp
+*.lock
+profile
+
+# Superpowers brainstorm sessions
+.superpowers/
+
+# Archives & Distribution
+*.dmg
+*.app
+*.dSYM.zip
+*.dSYM
