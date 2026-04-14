@@ -33,6 +33,15 @@ public struct ModelUsage: Codable, Sendable {
     public let webSearchRequests: Int?
     public let costUSD: Double?
 
+    public init(inputTokens: Int, outputTokens: Int, cacheReadInputTokens: Int, cacheCreationInputTokens: Int, webSearchRequests: Int?, costUSD: Double?) {
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.cacheReadInputTokens = cacheReadInputTokens
+        self.cacheCreationInputTokens = cacheCreationInputTokens
+        self.webSearchRequests = webSearchRequests
+        self.costUSD = costUSD
+    }
+
     public var totalTokens: Int {
         inputTokens + outputTokens + cacheReadInputTokens + cacheCreationInputTokens
     }

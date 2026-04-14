@@ -3,6 +3,10 @@ import Foundation
 public struct SessionTokenUsage: Sendable {
     public let byModel: [String: ModelTokens]
 
+    public init(byModel: [String: ModelTokens]) {
+        self.byModel = byModel
+    }
+
     public var totalInputTokens: Int { byModel.values.reduce(0) { $0 + $1.inputTokens } }
     public var totalOutputTokens: Int { byModel.values.reduce(0) { $0 + $1.outputTokens } }
     public var totalCacheReadTokens: Int { byModel.values.reduce(0) { $0 + $1.cacheReadInputTokens } }
@@ -15,6 +19,13 @@ public struct ModelTokens: Sendable {
     public var outputTokens: Int
     public var cacheReadInputTokens: Int
     public var cacheCreationInputTokens: Int
+
+    public init(inputTokens: Int, outputTokens: Int, cacheReadInputTokens: Int, cacheCreationInputTokens: Int) {
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.cacheReadInputTokens = cacheReadInputTokens
+        self.cacheCreationInputTokens = cacheCreationInputTokens
+    }
 
     public var totalTokens: Int { inputTokens + outputTokens + cacheReadInputTokens + cacheCreationInputTokens }
 
