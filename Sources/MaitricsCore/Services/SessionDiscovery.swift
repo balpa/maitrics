@@ -13,7 +13,7 @@ public enum SessionDiscovery {
         return f
     }()
 
-    static func parseDate(_ string: String) -> Date {
+    public static func parseDate(_ string: String) -> Date {
         isoFormatter.date(from: string)
             ?? isoFormatterNoFrac.date(from: string)
             ?? Date.distantPast

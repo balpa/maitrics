@@ -1,72 +1,81 @@
 import Foundation
-import Security
+
+// MARK: - Models
 
 public struct UsageData: Sendable {
     public let fiveHour: UsageWindow
     public let sevenDay: UsageWindow
+    public let sevenDaySonnet: UsageWindow?
+    public let sevenDayOpus: UsageWindow?
+    public let extraUsage: ExtraUsage?
 }
 
 public struct UsageWindow: Sendable {
-    public let utilization: Double // 0-100 percentage
+    public let utilization: Double
     public let resetsAt: Date?
 }
 
+public struct ExtraUsage: Sendable {
+    public let isEnabled: Bool
+    public let monthlyLimit: Double?
+    public let usedCredits: Double?
+    public let utilization: Double?
+}
+
+// MARK: - API Client
+
 public enum UsageAPIClient {
-    private static let endpoint = URL(string: "https://api.anthropic.com/api/oauth/usage")!
+    private static let usageEndpoint = URL(string: "https://api.anthropic.com/api/oauth/usage")!
     private static let cacheFile = URL(fileURLWithPath: "/tmp/claude/maitrics-usage-cache.json")
     private static let cacheTTL: TimeInterval = 60
 
     // MARK: - Public
 
     public static func fetchUsage() async -> UsageData? {
-        // Check cache first
-        if let cached = readCache() {
-            return cached
-        }
+        if let cached = readCache() { return cached }
 
-        // Fetch fresh
         guard let token = resolveOAuthToken() else { return nil }
 
         do {
-            var request = URLRequest(url: endpoint)
-            request.timeoutInterval = 5
-            request.setValue("application/json", forHTTPHeaderField: "Accept")
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
-            request.setValue("maitrics/0.1.0", forHTTPHeaderField: "User-Agent")
-
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse,
-                  httpResponse.statusCode == 200 else {
-                return readCache(ignoreExpiry: true)
-            }
-
-            // Cache the raw response
+            let data = try await apiRequest(url: usageEndpoint, token: token)
             try? FileManager.default.createDirectory(at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? data.write(to: cacheFile)
-
-            return parseResponse(data)
+            return parseUsageResponse(data)
         } catch {
             return readCache(ignoreExpiry: true)
         }
     }
 
-    // MARK: - OAuth Token Resolution
+    // MARK: - HTTP
+
+    private static func apiRequest(url: URL, token: String) async throws -> Data {
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 5
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
+        request.setValue("maitrics/0.1.0", forHTTPHeaderField: "User-Agent")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw URLError(.badServerResponse)
+        }
+        return data
+    }
+
+    // MARK: - OAuth Token Resolution (via `security` CLI — no keychain prompt)
 
     static func resolveOAuthToken() -> String? {
-        // 1. Environment variable
         if let envToken = ProcessInfo.processInfo.environment["CLAUDE_CODE_OAUTH_TOKEN"],
            !envToken.isEmpty {
             return envToken
         }
 
-        // 2. macOS Keychain
-        if let keychainToken = readFromKeychain() {
+        if let keychainToken = readFromKeychainCLI() {
             return keychainToken
         }
 
-        // 3. Credentials file
         if let fileToken = readFromCredentialsFile() {
             return fileToken
         }
@@ -74,19 +83,29 @@ public enum UsageAPIClient {
         return nil
     }
 
-    private static func readFromKeychain() -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "Claude Code-credentials",
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
+    /// Uses `security find-generic-password` CLI tool — same as statusline.sh.
+    /// This avoids the keychain password prompt that SecItemCopyMatching triggers.
+    private static func readFromKeychainCLI() -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process.arguments = ["find-generic-password", "-s", "Claude Code-credentials", "-w"]
 
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        guard status == errSecSuccess, let data = result as? Data else { return nil }
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
 
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch { return nil }
+
+        guard process.terminationStatus == 0 else { return nil }
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard let blob = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !blob.isEmpty,
+              let jsonData = blob.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
               let oauth = json["claudeAiOauth"] as? [String: Any],
               let token = oauth["accessToken"] as? String,
               !token.isEmpty else { return nil }
@@ -116,7 +135,7 @@ public enum UsageAPIClient {
         }
 
         guard let data = try? Data(contentsOf: cacheFile) else { return nil }
-        return parseResponse(data)
+        return parseUsageResponse(data)
     }
 
     // MARK: - Parsing
@@ -133,15 +152,30 @@ public enum UsageAPIClient {
         return f
     }()
 
-    private static func parseResponse(_ data: Data) -> UsageData? {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
-
-        guard let fiveHourJSON = json["five_hour"] as? [String: Any],
+    private static func parseUsageResponse(_ data: Data) -> UsageData? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let fiveHourJSON = json["five_hour"] as? [String: Any],
               let sevenDayJSON = json["seven_day"] as? [String: Any] else { return nil }
+
+        let sevenDaySonnet = (json["seven_day_sonnet"] as? [String: Any]).map { parseWindow($0) }
+        let sevenDayOpus = (json["seven_day_opus"] as? [String: Any]).map { parseWindow($0) }
+
+        var extraUsage: ExtraUsage?
+        if let extraJSON = json["extra_usage"] as? [String: Any] {
+            extraUsage = ExtraUsage(
+                isEnabled: extraJSON["is_enabled"] as? Bool ?? false,
+                monthlyLimit: extraJSON["monthly_limit"] as? Double,
+                usedCredits: extraJSON["used_credits"] as? Double,
+                utilization: extraJSON["utilization"] as? Double
+            )
+        }
 
         return UsageData(
             fiveHour: parseWindow(fiveHourJSON),
-            sevenDay: parseWindow(sevenDayJSON)
+            sevenDay: parseWindow(sevenDayJSON),
+            sevenDaySonnet: sevenDaySonnet,
+            sevenDayOpus: sevenDayOpus,
+            extraUsage: extraUsage
         )
     }
 

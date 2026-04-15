@@ -4,6 +4,7 @@ import Foundation
 public final class ClaudeDataManager {
     public private(set) var statsCache: StatsCache?
     public private(set) var recentSessions: [RecentSession] = []
+    public private(set) var liveDailyTokens: [String: [String: Int]] = [:] // date -> model -> tokens
     public private(set) var usageData: UsageData?
     public private(set) var lastRefresh: Date?
     public private(set) var isLoading = false
@@ -18,11 +19,21 @@ public final class ClaudeDataManager {
 
     // MARK: - Computed Properties
 
-    public var todayTokens: Int { todayModelTokens.values.reduce(0, +) }
+    public var todayTokens: Int {
+        let todayStr = Self.dateString(for: Date())
+        // Prefer live data, fall back to stats cache
+        if let live = liveDailyTokens[todayStr] {
+            return live.values.reduce(0, +)
+        }
+        return todayModelTokens.values.reduce(0, +)
+    }
 
     public var todayModelTokens: [String: Int] {
-        guard let statsCache else { return [:] }
         let todayStr = Self.dateString(for: Date())
+        if let live = liveDailyTokens[todayStr] {
+            return live
+        }
+        guard let statsCache else { return [:] }
         return statsCache.dailyModelTokens.first { $0.date == todayStr }?.tokensByModel ?? [:]
     }
 
@@ -50,15 +61,30 @@ public final class ClaudeDataManager {
         }
     }
 
+    /// Merge stats-cache data with live session data for a complete daily totals picture
     public func dailyTotals(days: Int?) -> [(date: Date, tokens: Int)] {
-        guard let statsCache else { return [] }
         let formatter = Self.dateFormatter
-        var results: [(date: Date, tokens: Int)] = statsCache.dailyModelTokens.compactMap { day in
-            guard let date = formatter.date(from: day.date) else { return nil }
-            let total = day.tokensByModel.values.reduce(0, +)
-            return (date: date, tokens: total)
+        var byDate: [String: Int] = [:]
+
+        // Start with stats-cache data
+        if let statsCache {
+            for day in statsCache.dailyModelTokens {
+                byDate[day.date] = day.tokensByModel.values.reduce(0, +)
+            }
+        }
+
+        // Overlay live session data (takes precedence for dates it covers)
+        for (date, modelTokens) in liveDailyTokens {
+            let liveTotal = modelTokens.values.reduce(0, +)
+            byDate[date, default: 0] = max(byDate[date] ?? 0, liveTotal)
+        }
+
+        var results: [(date: Date, tokens: Int)] = byDate.compactMap { dateStr, tokens in
+            guard let date = formatter.date(from: dateStr) else { return nil }
+            return (date: date, tokens: tokens)
         }
         results.sort { $0.date < $1.date }
+
         if let days {
             let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date.distantPast
             results = results.filter { $0.date >= cutoff }
@@ -94,6 +120,12 @@ public final class ClaudeDataManager {
                 }
             }
 
+            // Compute live daily tokens from recent session JSONL files
+            let newLiveDailyTokens = self.computeLiveDailyTokens(
+                lastComputedDate: newStatsCache?.lastComputedDate,
+                projectsDir: settings.projectsPath
+            )
+
             // Discover sessions
             var newSessions: [RecentSession] = []
             if let discovered = try? SessionDiscovery.discoverSessions(claudeProjectsDir: settings.projectsPath) {
@@ -121,9 +153,11 @@ public final class ClaudeDataManager {
             let finalSessions = newSessions
             let finalError = newError
             let finalUsage = newUsageData
+            let finalLive = newLiveDailyTokens
             await MainActor.run {
                 self.statsCache = finalStats
                 self.recentSessions = finalSessions
+                self.liveDailyTokens = finalLive
                 if let finalUsage { self.usageData = finalUsage }
                 if let finalError { self.error = finalError }
                 self.lastRefresh = Date()
@@ -132,9 +166,71 @@ public final class ClaudeDataManager {
         }
     }
 
+    // MARK: - Live Daily Tokens from JSONL
+
+    /// Scan recent session JSONL files for dates after lastComputedDate to fill the gap
+    private func computeLiveDailyTokens(lastComputedDate: String?, projectsDir: URL) -> [String: [String: Int]] {
+        let formatter = Self.dateFormatter
+        let cutoffDate: Date
+        if let lcd = lastComputedDate, let d = formatter.date(from: lcd) {
+            cutoffDate = d
+        } else {
+            // No cache at all — compute last 30 days
+            cutoffDate = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date.distantPast
+        }
+
+        // Only process if there's actually a gap
+        guard cutoffDate < Date() else { return [:] }
+
+        var dailyTokens: [String: [String: Int]] = [:] // date -> model -> tokens
+
+        guard let discovered = try? SessionDiscovery.discoverSessions(claudeProjectsDir: projectsDir) else { return [:] }
+
+        // Only process sessions modified after the cutoff
+        let recentSessions = discovered.filter { $0.modified > cutoffDate }
+
+        for session in recentSessions {
+            guard let path = session.jsonlPath else { continue }
+            let fileURL = URL(fileURLWithPath: path)
+            guard let data = try? Data(contentsOf: fileURL),
+                  let text = String(data: data, encoding: .utf8) else { continue }
+
+            for line in text.components(separatedBy: .newlines) where !line.isEmpty {
+                guard let lineData = line.data(using: .utf8),
+                      let obj = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                      obj["type"] as? String == "assistant",
+                      let message = obj["message"] as? [String: Any],
+                      let model = message["model"] as? String,
+                      let usage = message["usage"] as? [String: Any] else { continue }
+
+                // Get the timestamp for this message to determine which day
+                let dateStr: String
+                if let timestamp = obj["timestamp"] as? String,
+                   let msgDate = SessionDiscovery.parseDate(timestamp) as Date?,
+                   msgDate != Date.distantPast {
+                    dateStr = formatter.string(from: msgDate)
+                } else {
+                    dateStr = formatter.string(from: session.modified)
+                }
+
+                // Only count dates after the cutoff
+                guard let dayDate = formatter.date(from: dateStr), dayDate > cutoffDate else { continue }
+
+                let output = usage["output_tokens"] as? Int ?? 0
+                let input = usage["input_tokens"] as? Int ?? 0
+                let cacheRead = usage["cache_read_input_tokens"] as? Int ?? 0
+                let cacheWrite = usage["cache_creation_input_tokens"] as? Int ?? 0
+                let total = output + input + cacheRead + cacheWrite
+
+                dailyTokens[dateStr, default: [:]][model, default: 0] += total
+            }
+        }
+
+        return dailyTokens
+    }
+
     // MARK: - Helpers
 
-    /// Cache session JSONL parsing — only re-parse when file mtime changes
     private func cachedTokenUsage(for session: DiscoveredSession, settings: AppSettings) -> SessionTokenUsage? {
         guard let path = session.jsonlPath else { return nil }
         let fileURL = URL(fileURLWithPath: path)

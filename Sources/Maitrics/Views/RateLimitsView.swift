@@ -22,6 +22,61 @@ struct RateLimitsView: View {
                     percentage: usage.sevenDay.utilization,
                     resetsAt: usage.sevenDay.resetsAt
                 )
+
+                // Per-model quotas (if available)
+                if usage.sevenDayOpus != nil || usage.sevenDaySonnet != nil {
+                    Divider().opacity(0.06).padding(.vertical, 4)
+
+                    if let opus = usage.sevenDayOpus {
+                        UsageBarRow(
+                            label: "Opus",
+                            sublabel: "weekly",
+                            percentage: opus.utilization,
+                            resetsAt: opus.resetsAt,
+                            barColors: (Color(red: 249/255, green: 115/255, blue: 22/255).opacity(0.8),
+                                        Color(red: 249/255, green: 115/255, blue: 22/255))
+                        )
+                    }
+                    if let sonnet = usage.sevenDaySonnet {
+                        UsageBarRow(
+                            label: "Sonnet",
+                            sublabel: "weekly",
+                            percentage: sonnet.utilization,
+                            resetsAt: sonnet.resetsAt,
+                            barColors: (Color(red: 59/255, green: 130/255, blue: 246/255).opacity(0.8),
+                                        Color(red: 59/255, green: 130/255, blue: 246/255))
+                        )
+                    }
+                }
+
+                // Extra usage credits
+                if let extra = usage.extraUsage, extra.isEnabled {
+                    Divider().opacity(0.06).padding(.vertical, 4)
+                    HStack {
+                        Text("Extra Credits")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(Color(white: 0.75))
+                        Spacer()
+                        if let used = extra.usedCredits, let limit = extra.monthlyLimit {
+                            Text(String(format: "$%.2f / $%.2f", used, limit))
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundColor(Color(red: 192/255, green: 132/255, blue: 252/255))
+                        }
+                    }
+                    if let pct = extra.utilization {
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(Color.white.opacity(0.06))
+                                    .frame(height: 6)
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(Color(red: 192/255, green: 132/255, blue: 252/255))
+                                    .frame(width: geo.size.width * min(CGFloat(pct) / 100, 1), height: 6)
+                            }
+                        }
+                        .frame(height: 6)
+                    }
+                }
             } else {
                 HStack(spacing: 6) {
                     Image(systemName: "person.crop.circle.badge.questionmark")
@@ -43,6 +98,7 @@ struct UsageBarRow: View {
     let sublabel: String
     let percentage: Double
     let resetsAt: Date?
+    var barColors: (Color, Color)? = nil
 
     private var barColor: Color {
         if percentage >= 90 { return Color(red: 255/255, green: 85/255, blue: 85/255) }
@@ -51,8 +107,8 @@ struct UsageBarRow: View {
         return Color(red: 74/255, green: 222/255, blue: 128/255)
     }
 
-    private var pctText: String {
-        String(format: "%.0f%%", percentage)
+    private var resolvedBarColors: (Color, Color) {
+        barColors ?? (barColor.opacity(0.8), barColor)
     }
 
     var body: some View {
@@ -65,9 +121,9 @@ struct UsageBarRow: View {
                     .font(.system(size: 9))
                     .foregroundColor(Color(white: 0.35))
                 Spacer()
-                Text(pctText)
+                Text(String(format: "%.0f%%", percentage))
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundColor(barColor)
+                    .foregroundColor(barColors != nil ? barColors!.1 : barColor)
                 if let resetsAt {
                     Text("resets \(Formatting.timeAgo(resetsAt))")
                         .font(.system(size: 9))
@@ -80,11 +136,10 @@ struct UsageBarRow: View {
                     RoundedRectangle(cornerRadius: 3)
                         .fill(Color.white.opacity(0.06))
                         .frame(height: 6)
-
                     RoundedRectangle(cornerRadius: 3)
                         .fill(
                             LinearGradient(
-                                colors: [barColor.opacity(0.8), barColor],
+                                colors: [resolvedBarColors.0, resolvedBarColors.1],
                                 startPoint: .leading,
                                 endPoint: .trailing
                             )
