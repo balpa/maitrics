@@ -27,8 +27,8 @@ final class StatusBarController {
         withObservationTracking {
             _ = dataManager.usageData
             _ = dataManager.lastRefresh
-        } onChange: {
-            DispatchQueue.main.async { [weak self] in
+        } onChange: { [weak self] in
+            DispatchQueue.main.async {
                 self?.updateStatusText()
                 self?.observeDataChanges()
             }
@@ -101,7 +101,7 @@ final class StatusBarController {
             let bottomBarY: CGFloat = 0        // weekly bar (bottom)
 
             // "S" and "W" labels — white with dark outline for visibility
-            let labelFont = NSFont.systemFont(ofSize: 6.5, weight: .heavy)
+            let labelFont = NSFont.systemFont(ofSize: 7, weight: .heavy)
             let outlineAttrs: [NSAttributedString.Key: Any] = [
                 .font: labelFont,
                 .foregroundColor: NSColor.black,
