@@ -124,12 +124,16 @@ struct UsageTrendChartView: View {
                     .opacity(hoveredDate == nil || hoveredItem?.date == item.date ? 1 : 0.4)
                 }
                 .chartXAxis {
-                    AxisMarks(values: displayData.map(\.date)) { value in
+                    AxisMarks(values: xAxisDates) { value in
                         AxisValueLabel(centered: true) {
                             if let date = value.as(Date.self) {
                                 Text(xAxisLabel(for: date))
                                     .font(.system(size: 8))
-                                    .foregroundColor(Color(white: 0.35))
+                                    .foregroundColor(
+                                        Self.dayFormatter.string(from: date) == Self.dayFormatter.string(from: Date())
+                                            ? Color(red: 74/255, green: 222/255, blue: 128/255)
+                                            : Color(white: 0.35)
+                                    )
                             }
                         }
                     }
@@ -188,6 +192,27 @@ struct UsageTrendChartView: View {
         f.dateFormat = "MMM ''yy"
         return f
     }()
+
+    /// Select which dates get x-axis labels to avoid overlapping
+    private var xAxisDates: [Date] {
+        let dates = displayData.map(\.date)
+        switch selectedRange {
+        case 0:
+            return dates // 7 days — show all
+        case 1:
+            // 30d — show every 5th date
+            return dates.enumerated().compactMap { i, d in i % 5 == 0 ? d : nil }
+        default:
+            // All — show ~first of each month
+            var seen = Set<String>()
+            return dates.filter { date in
+                let key = Self.monthYearFormatter.string(from: date)
+                if seen.contains(key) { return false }
+                seen.insert(key)
+                return true
+            }
+        }
+    }
 
     private func xAxisLabel(for date: Date) -> String {
         switch selectedRange {
