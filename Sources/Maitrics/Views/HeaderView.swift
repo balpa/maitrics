@@ -15,6 +15,7 @@ struct HeaderView: View {
                     .foregroundColor(Color(white: 0.4))
             }
             .buttonStyle(.plain)
+            .focusable(false)
         }
         .padding(.horizontal, 20)
         .padding(.top, 16)

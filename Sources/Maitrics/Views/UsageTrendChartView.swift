@@ -35,14 +35,26 @@ struct UsageTrendChartView: View {
 
     private var displayData: [ChartDataPoint] {
         let todayStr = Self.dayFormatter.string(from: Date())
+        let calendar = Calendar.current
         let filtered: [(date: Date, tokens: Int)]
 
         switch selectedRange {
         case 0:
-            let cutoff = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date.distantPast
-            filtered = allDailyTotals.filter { $0.date >= cutoff }
+            // 7d view: fill all 7 days so every weekday label shows
+            let dataByDate = Dictionary(
+                allDailyTotals.map { (Self.dayFormatter.string(from: $0.date), $0.tokens) },
+                uniquingKeysWith: { $1 }
+            )
+            var days: [(date: Date, tokens: Int)] = []
+            for i in (0..<7).reversed() {
+                if let date = calendar.date(byAdding: .day, value: -i, to: calendar.startOfDay(for: Date())) {
+                    let key = Self.dayFormatter.string(from: date)
+                    days.append((date: date, tokens: dataByDate[key] ?? 0))
+                }
+            }
+            filtered = days
         case 1:
-            let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date.distantPast
+            let cutoff = calendar.date(byAdding: .day, value: -30, to: Date()) ?? Date.distantPast
             filtered = allDailyTotals.filter { $0.date >= cutoff }
         default:
             filtered = allDailyTotals
@@ -64,9 +76,24 @@ struct UsageTrendChartView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 8) {
                 SectionLabel(text: "Usage Trend")
+
+                HStack(spacing: 2) {
+                    ForEach(["7d", "30d", "All"], id: \.self) { label in
+                        let tag = label == "7d" ? 0 : label == "30d" ? 1 : 2
+                        Button(label) { selectedRange = tag }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 9, weight: selectedRange == tag ? .bold : .regular))
+                            .foregroundColor(selectedRange == tag ? .white : Color(white: 0.45))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(selectedRange == tag ? Color.blue.opacity(0.6) : Color.clear)
+                            .cornerRadius(4)
+                    }
+                }
+
                 Spacer()
 
                 if let item = hoveredItem {
@@ -75,15 +102,6 @@ struct UsageTrendChartView: View {
                         .foregroundColor(Color(white: 0.6))
                         .transition(.opacity)
                 }
-
-                Picker("", selection: $selectedRange) {
-                    Text("7d").tag(0)
-                    Text("30d").tag(1)
-                    Text("All").tag(2)
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 110)
-                .scaleEffect(0.8)
             }
 
             if displayData.isEmpty {
@@ -148,7 +166,8 @@ struct UsageTrendChartView: View {
                 .frame(height: 100)
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.leading, 16)
+        .padding(.trailing, 12)
         .padding(.vertical, 14)
     }
 
