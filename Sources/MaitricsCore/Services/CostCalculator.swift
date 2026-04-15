@@ -52,6 +52,7 @@ public enum CostCalculator {
         }
     }
 
+    /// Cost from input+output tokens only (excludes cache — appropriate for subscription users)
     public static func cost(for session: SessionTokenUsage, customPricing: [String: PricingTier]? = nil) -> Double {
         session.byModel.reduce(0.0) { total, pair in
             let p = pricing(for: pair.key, customPricing: customPricing)
@@ -60,8 +61,6 @@ public enum CostCalculator {
             return total
                 + (Double(tokens.inputTokens) / scale * p.inputPer1M)
                 + (Double(tokens.outputTokens) / scale * p.outputPer1M)
-                + (Double(tokens.cacheReadInputTokens) / scale * p.cacheReadPer1M)
-                + (Double(tokens.cacheCreationInputTokens) / scale * p.cacheWritePer1M)
         }
     }
 }

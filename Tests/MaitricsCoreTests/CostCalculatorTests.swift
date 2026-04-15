@@ -45,8 +45,8 @@ final class CostCalculatorTests: XCTestCase {
             "claude-opus-4-6": ModelTokens(inputTokens: 300, outputTokens: 1300, cacheReadInputTokens: 13000, cacheCreationInputTokens: 3000)
         ])
         let cost = CostCalculator.cost(for: session)
-        // (300/1M*15) + (1300/1M*75) + (13000/1M*1.5) + (3000/1M*18.75) = 0.17775
-        XCTAssertEqual(cost, 0.17775, accuracy: 0.001)
+        // Input+output only: (300/1M*15) + (1300/1M*75) = 0.0045 + 0.0975 = 0.102
+        XCTAssertEqual(cost, 0.102, accuracy: 0.001)
     }
 
     func testCustomPricingOverride() {

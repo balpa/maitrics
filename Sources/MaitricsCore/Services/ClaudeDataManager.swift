@@ -246,16 +246,29 @@ public final class ClaudeDataManager {
         return usage
     }
 
+    /// Estimate daily cost from input+output token totals per model.
+    /// Uses weighted average of input/output pricing based on the aggregate ratio.
     private func estimateDailyCost(dailyTokens: [String: Int], modelUsage: [String: ModelUsage]) -> Double {
         dailyTokens.reduce(0.0) { total, pair in
             let (modelId, dailyTotal) = pair
             guard dailyTotal > 0 else { return total }
-            if let usage = modelUsage[modelId], usage.totalTokens > 0 {
-                let scale = Double(dailyTotal) / Double(usage.totalTokens)
-                return total + CostCalculator.cost(for: usage, model: modelId, customPricing: settings.customPricing) * scale
-            }
             let pricing = CostCalculator.pricing(for: modelId, customPricing: settings.customPricing)
-            return total + Double(dailyTotal) / 1_000_000.0 * pricing.outputPer1M
+            let scale = 1_000_000.0
+
+            // Use the aggregate input/output ratio to split daily tokens
+            if let usage = modelUsage[modelId] {
+                let io = usage.inputTokens + usage.outputTokens
+                if io > 0 {
+                    let inputRatio = Double(usage.inputTokens) / Double(io)
+                    let outputRatio = Double(usage.outputTokens) / Double(io)
+                    let estimatedInput = Double(dailyTotal) * inputRatio
+                    let estimatedOutput = Double(dailyTotal) * outputRatio
+                    return total + (estimatedInput / scale * pricing.inputPer1M)
+                                 + (estimatedOutput / scale * pricing.outputPer1M)
+                }
+            }
+            // Fallback: assume all output (worst case)
+            return total + Double(dailyTotal) / scale * pricing.outputPer1M
         }
     }
 
