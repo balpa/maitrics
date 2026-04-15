@@ -69,6 +69,7 @@ struct SettingsView: View {
                             .animation(.easeInOut(duration: 0.15), value: launchAtLogin)
                     }
                     .buttonStyle(.plain)
+            .focusable(false)
                 }
             }
             .padding(.horizontal, 20)
@@ -91,6 +92,8 @@ struct SettingsView: View {
         }
     }
 
+    @State private var isRelogging = false
+
     private var connectionStatus: some View {
         VStack(alignment: .leading, spacing: 6) {
             if UsageAPIClient.hasToken {
@@ -99,12 +102,28 @@ struct SettingsView: View {
                     Text("Connected via Claude Code")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(Color(white: 0.85))
+                    Spacer()
+                    Button("Re-login") {
+                        relogin()
+                    }
+                    .buttonStyle(.plain)
+                    .focusable(false)
+                    .font(.system(size: 9))
+                    .foregroundColor(Color(white: 0.55))
                 }
                 if let error = UsageAPIClient.lastError {
                     HStack(spacing: 4) {
                         Image(systemName: "exclamationmark.triangle")
                             .font(.system(size: 9))
                         Text(errorMessage(error))
+                        Spacer()
+                        Button("Re-login to fix") {
+                            relogin()
+                        }
+                        .buttonStyle(.plain)
+                        .focusable(false)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(Color(red: 96/255, green: 165/255, blue: 250/255))
                     }
                     .font(.system(size: 9))
                     .foregroundColor(Color(red: 255/255, green: 176/255, blue: 85/255))
@@ -112,11 +131,46 @@ struct SettingsView: View {
             } else {
                 HStack(spacing: 6) {
                     Circle().fill(Color(red: 255/255, green: 85/255, blue: 85/255)).frame(width: 6, height: 6)
-                    Text("Not connected — Claude Code CLI required")
+                    Text("Not connected")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(Color(white: 0.85))
+                    Spacer()
+                    Button("Login") {
+                        relogin()
+                    }
+                    .buttonStyle(.plain)
+                    .focusable(false)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(Color(red: 96/255, green: 165/255, blue: 250/255))
+                }
+                Text("Claude Code CLI required")
+                    .font(.system(size: 9))
+                    .foregroundColor(Color(white: 0.5))
+            }
+
+            if isRelogging {
+                HStack(spacing: 4) {
+                    ProgressView().controlSize(.small)
+                    Text("Opening Claude Code login...")
+                        .font(.system(size: 9))
+                        .foregroundColor(Color(white: 0.6))
                 }
             }
+        }
+    }
+
+    private func relogin() {
+        isRelogging = true
+        // Launch `claude` CLI which triggers the OAuth flow in browser
+        Task.detached {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            process.arguments = ["claude", "--login"]
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            try? process.run()
+            process.waitUntilExit()
+            await MainActor.run { isRelogging = false }
         }
     }
 
@@ -164,6 +218,7 @@ struct SettingsView: View {
                     }
                 }
                 .buttonStyle(.plain)
+            .focusable(false)
                 .font(.system(size: 9))
                 .foregroundColor(Color(white: 0.6))
                 .disabled(pricingRefreshing)
