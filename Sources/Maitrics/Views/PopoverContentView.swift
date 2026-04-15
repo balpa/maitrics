@@ -51,7 +51,8 @@ struct PopoverContentView: View {
                 }
             }
         }
-        .frame(width: 400, height: 700)
+        .frame(width: 400)
+        .fixedSize(horizontal: false, vertical: true)
         .clipped()
     }
 }

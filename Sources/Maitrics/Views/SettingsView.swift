@@ -74,7 +74,6 @@ struct SettingsView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
         }
-        .frame(maxHeight: .infinity, alignment: .top)
         .onAppear {
             greenThreshold = "\(settings.thresholdGreen)"
             yellowThreshold = "\(settings.thresholdYellow)"
