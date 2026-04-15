@@ -73,33 +73,14 @@ final class StatusBarController {
         guard let button = statusItem.button else { return }
 
         if let usage = dataManager.usageData {
-            let sessionPct = Int(usage.fiveHour.utilization)
-            let weeklyPct = Int(usage.sevenDay.utilization)
+            let sessionPct = usage.fiveHour.utilization
+            let weeklyPct = usage.sevenDay.utilization
 
-            let text = NSMutableAttributedString()
-            let digitFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
-            let labelFont = NSFont.systemFont(ofSize: 8.5, weight: .medium)
-            let dimColor = NSColor(white: 0.45, alpha: 1)
-
-            // Session: dot + label + pct
-            text.append(coloredDot(for: sessionPct, size: 5.5))
-            text.append(str(" ", font: labelFont, color: dimColor))
-            text.append(str("5h ", font: labelFont, color: dimColor))
-            text.append(str("\(sessionPct)%", font: digitFont, color: colorForPct(sessionPct)))
-
-            // Separator
-            text.append(str("  ", font: labelFont, color: dimColor))
-
-            // Weekly: dot + label + pct
-            text.append(coloredDot(for: weeklyPct, size: 5.5))
-            text.append(str(" ", font: labelFont, color: dimColor))
-            text.append(str("7d ", font: labelFont, color: dimColor))
-            text.append(str("\(weeklyPct)%", font: digitFont, color: colorForPct(weeklyPct)))
-
-            button.image = nil
-            button.attributedTitle = text
+            let barImage = renderBarImage(sessionPct: sessionPct, weeklyPct: weeklyPct)
+            button.attributedTitle = NSAttributedString(string: "")
+            button.image = barImage
+            button.imagePosition = .imageOnly
         } else {
-            // Fallback: show icon when no API data
             button.attributedTitle = NSAttributedString(string: "")
             let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
             let image = NSImage(systemSymbolName: "gauge.with.dots.needle.33percent", accessibilityDescription: "Maitrics")?.withSymbolConfiguration(config)
@@ -108,29 +89,81 @@ final class StatusBarController {
         }
     }
 
-    private func str(_ text: String, font: NSFont, color: NSColor) -> NSAttributedString {
-        NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: color])
-    }
+    private func renderBarImage(sessionPct: Double, weeklyPct: Double) -> NSImage {
+        let barWidth: CGFloat = 50
+        let barHeight: CGFloat = 5
+        let spacing: CGFloat = 3
+        let labelWidth: CGFloat = 10
+        let totalWidth = labelWidth + 2 + barWidth
+        let totalHeight = barHeight * 2 + spacing
+        let cornerRadius: CGFloat = 2.5
 
-    private func coloredDot(for pct: Int, size: CGFloat) -> NSAttributedString {
-        let dot = NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
-            let color = self.colorForPct(pct)
-            color.setFill()
-            NSBezierPath(ovalIn: rect.insetBy(dx: 0.5, dy: 0.5)).fill()
+        let image = NSImage(size: NSSize(width: totalWidth, height: totalHeight), flipped: false) { bounds in
+            let topBarY = spacing + barHeight  // session bar (top)
+            let bottomBarY: CGFloat = 0        // weekly bar (bottom)
+
+            // "S" label
+            let labelAttrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 7, weight: .bold),
+                .foregroundColor: NSColor(white: 0.55, alpha: 1)
+            ]
+            NSString("S").draw(at: NSPoint(x: 0, y: topBarY - 1), withAttributes: labelAttrs)
+            NSString("W").draw(at: NSPoint(x: 0, y: bottomBarY - 1), withAttributes: labelAttrs)
+
+            let barX = labelWidth + 2
+
+            // Session bar background
+            let sessionBg = NSBezierPath(roundedRect: NSRect(x: barX, y: topBarY, width: barWidth, height: barHeight), xRadius: cornerRadius, yRadius: cornerRadius)
+            NSColor(white: 0.3, alpha: 0.4).setFill()
+            sessionBg.fill()
+
+            // Session bar fill
+            let sessionFillWidth = barWidth * min(CGFloat(sessionPct) / 100, 1)
+            if sessionFillWidth > 0 {
+                let sessionFill = NSBezierPath(roundedRect: NSRect(x: barX, y: topBarY, width: sessionFillWidth, height: barHeight), xRadius: cornerRadius, yRadius: cornerRadius)
+                self.gradientForPct(sessionPct, width: sessionFillWidth, height: barHeight).draw(in: sessionFill, angle: 0)
+            }
+
+            // Weekly bar background
+            let weeklyBg = NSBezierPath(roundedRect: NSRect(x: barX, y: bottomBarY, width: barWidth, height: barHeight), xRadius: cornerRadius, yRadius: cornerRadius)
+            NSColor(white: 0.3, alpha: 0.4).setFill()
+            weeklyBg.fill()
+
+            // Weekly bar fill
+            let weeklyFillWidth = barWidth * min(CGFloat(weeklyPct) / 100, 1)
+            if weeklyFillWidth > 0 {
+                let weeklyFill = NSBezierPath(roundedRect: NSRect(x: barX, y: bottomBarY, width: weeklyFillWidth, height: barHeight), xRadius: cornerRadius, yRadius: cornerRadius)
+                self.gradientForPct(weeklyPct, width: weeklyFillWidth, height: barHeight).draw(in: weeklyFill, angle: 0)
+            }
+
             return true
         }
-        let attachment = NSTextAttachment()
-        attachment.image = dot
-        // Center the dot vertically relative to the text
-        attachment.bounds = CGRect(x: 0, y: 1, width: size, height: size)
-        return NSAttributedString(attachment: attachment)
+        image.isTemplate = false
+        return image
     }
 
-    private func colorForPct(_ pct: Int) -> NSColor {
-        if pct >= 90 { return NSColor(red: 1.0, green: 0.33, blue: 0.33, alpha: 1) }     // red
-        if pct >= 70 { return NSColor(red: 1.0, green: 0.78, blue: 0.0, alpha: 1) }      // yellow
-        if pct >= 50 { return NSColor(red: 1.0, green: 0.69, blue: 0.33, alpha: 1) }     // orange
-        return NSColor(red: 0.29, green: 0.87, blue: 0.50, alpha: 1)                       // green
+    private func gradientForPct(_ pct: Double, width: CGFloat, height: CGFloat) -> NSGradient {
+        // Gradient goes from green → yellow → orange → red based on the fill percentage
+        if pct >= 90 {
+            return NSGradient(colors: [
+                NSColor(red: 1.0, green: 0.55, blue: 0.0, alpha: 1),   // orange
+                NSColor(red: 1.0, green: 0.25, blue: 0.25, alpha: 1)   // red
+            ])!
+        } else if pct >= 70 {
+            return NSGradient(colors: [
+                NSColor(red: 0.9, green: 0.8, blue: 0.0, alpha: 1),    // yellow
+                NSColor(red: 1.0, green: 0.55, blue: 0.0, alpha: 1)    // orange
+            ])!
+        } else if pct >= 50 {
+            return NSGradient(colors: [
+                NSColor(red: 0.29, green: 0.87, blue: 0.50, alpha: 1), // green
+                NSColor(red: 0.9, green: 0.8, blue: 0.0, alpha: 1)    // yellow
+            ])!
+        }
+        return NSGradient(colors: [
+            NSColor(red: 0.2, green: 0.75, blue: 0.45, alpha: 1),      // darker green
+            NSColor(red: 0.29, green: 0.87, blue: 0.50, alpha: 1)      // green
+        ])!
     }
 
     @objc private func togglePopover() {
