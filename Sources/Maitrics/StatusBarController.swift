@@ -105,7 +105,7 @@ final class StatusBarController {
             // "S" label
             let labelAttrs: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: 7, weight: .bold),
-                .foregroundColor: NSColor(white: 0.55, alpha: 1)
+                .foregroundColor: NSColor(white: 0.85, alpha: 1)
             ]
             NSString("S").draw(at: NSPoint(x: 0, y: topBarY - 1), withAttributes: labelAttrs)
             NSString("W").draw(at: NSPoint(x: 0, y: bottomBarY - 1), withAttributes: labelAttrs)

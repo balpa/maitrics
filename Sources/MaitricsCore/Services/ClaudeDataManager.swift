@@ -216,11 +216,10 @@ public final class ClaudeDataManager {
                 // Only count dates after the cutoff
                 guard let dayDate = formatter.date(from: dateStr), dayDate > cutoffDate else { continue }
 
+                // Only count input + output (matches stats-cache.json; excludes cache tokens)
                 let output = usage["output_tokens"] as? Int ?? 0
                 let input = usage["input_tokens"] as? Int ?? 0
-                let cacheRead = usage["cache_read_input_tokens"] as? Int ?? 0
-                let cacheWrite = usage["cache_creation_input_tokens"] as? Int ?? 0
-                let total = output + input + cacheRead + cacheWrite
+                let total = input + output
 
                 dailyTokens[dateStr, default: [:]][model, default: 0] += total
             }
