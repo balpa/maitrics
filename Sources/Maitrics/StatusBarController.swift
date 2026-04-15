@@ -77,33 +77,25 @@ final class StatusBarController {
             let weeklyPct = Int(usage.sevenDay.utilization)
 
             let text = NSMutableAttributedString()
+            let digitFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+            let dimColor = NSColor(white: 0.50, alpha: 1)
 
-            // "S:" label
-            text.append(NSAttributedString(string: "S:", attributes: [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .medium),
-                .foregroundColor: NSColor(white: 0.55, alpha: 1)
-            ]))
+            // Colored dot for session
+            text.append(coloredDot(for: sessionPct, size: 6))
+            text.append(str(" ", font: digitFont, color: dimColor))
+
             // Session percentage
-            text.append(NSAttributedString(string: "\(sessionPct)%", attributes: [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .semibold),
-                .foregroundColor: colorForPct(sessionPct)
-            ]))
+            text.append(str("\(sessionPct)%", font: digitFont, color: colorForPct(sessionPct)))
 
-            // separator
-            text.append(NSAttributedString(string: " ", attributes: [
-                .font: NSFont.systemFont(ofSize: 10)
-            ]))
+            // Separator
+            text.append(str("  ", font: digitFont, color: dimColor))
 
-            // "W:" label
-            text.append(NSAttributedString(string: "W:", attributes: [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .medium),
-                .foregroundColor: NSColor(white: 0.55, alpha: 1)
-            ]))
+            // Colored dot for weekly
+            text.append(coloredDot(for: weeklyPct, size: 6))
+            text.append(str(" ", font: digitFont, color: dimColor))
+
             // Weekly percentage
-            text.append(NSAttributedString(string: "\(weeklyPct)%", attributes: [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .semibold),
-                .foregroundColor: colorForPct(weeklyPct)
-            ]))
+            text.append(str("\(weeklyPct)%", font: digitFont, color: colorForPct(weeklyPct)))
 
             button.image = nil
             button.attributedTitle = text
@@ -117,11 +109,29 @@ final class StatusBarController {
         }
     }
 
+    private func str(_ text: String, font: NSFont, color: NSColor) -> NSAttributedString {
+        NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: color])
+    }
+
+    private func coloredDot(for pct: Int, size: CGFloat) -> NSAttributedString {
+        let dot = NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
+            let color = self.colorForPct(pct)
+            color.setFill()
+            NSBezierPath(ovalIn: rect.insetBy(dx: 0.5, dy: 0.5)).fill()
+            return true
+        }
+        let attachment = NSTextAttachment()
+        attachment.image = dot
+        // Center the dot vertically relative to the text
+        attachment.bounds = CGRect(x: 0, y: 1, width: size, height: size)
+        return NSAttributedString(attachment: attachment)
+    }
+
     private func colorForPct(_ pct: Int) -> NSColor {
-        if pct >= 90 { return NSColor(red: 255/255, green: 85/255, blue: 85/255, alpha: 1) }
-        if pct >= 70 { return NSColor(red: 230/255, green: 200/255, blue: 0/255, alpha: 1) }
-        if pct >= 50 { return NSColor(red: 255/255, green: 176/255, blue: 85/255, alpha: 1) }
-        return NSColor(red: 74/255, green: 222/255, blue: 128/255, alpha: 1)
+        if pct >= 90 { return NSColor(red: 1.0, green: 0.33, blue: 0.33, alpha: 1) }     // red
+        if pct >= 70 { return NSColor(red: 1.0, green: 0.78, blue: 0.0, alpha: 1) }      // yellow
+        if pct >= 50 { return NSColor(red: 1.0, green: 0.69, blue: 0.33, alpha: 1) }     // orange
+        return NSColor(red: 0.29, green: 0.87, blue: 0.50, alpha: 1)                       // green
     }
 
     @objc private func togglePopover() {
