@@ -16,7 +16,7 @@
   },
   "totalSessions": 82,
   "totalMessages": 14523,
-  "longestSession": { "sessionId": "be6fc71f-3f67-4c0f-b6b3-5c42169ea4fe", "duration": 1061798321, "messageCount": 309, "timestamp": "2026-02-04T08:19:04.872Z" },
+  "longestSession": { "sessionId": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "duration": 1061798321, "messageCount": 309, "timestamp": "2026-02-04T08:19:04.872Z" },
   "firstSessionDate": "2026-01-30T08:46:24.450Z",
   "hourCounts": { "9": 3, "10": 10, "11": 20, "12": 24, "13": 5 },
   "totalSpeculationTimeSavedMs": 0

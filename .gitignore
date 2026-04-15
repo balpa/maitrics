@@ -1,6 +1,7 @@
 # Swift Package Manager
 .build/
 .swiftpm/
+Package.resolved
 
 # Xcode
 build/
@@ -15,17 +16,23 @@ xcuserdata/
 
 # macOS
 .DS_Store
+**/.DS_Store
 *.swp
 *.lock
 profile
 
-# Superpowers brainstorm sessions
+# Superpowers / planning
 .superpowers/
+docs/superpowers/
 
-# Build output
+# Build output & distribution
 dist/
-
-# Archives & Distribution
 *.dmg
 *.dSYM.zip
 *.dSYM
+
+# Credentials / secrets (should never be committed)
+.credentials*
+*.pem
+*.p12
+*.key
