@@ -102,7 +102,7 @@ final class StatusBarController {
     private func openSettings() {
         closePopover()
         settingsWindow = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 450, height: 500),
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 520),
             styleMask: [.titled, .closable],
             backing: .buffered, defer: false
         )

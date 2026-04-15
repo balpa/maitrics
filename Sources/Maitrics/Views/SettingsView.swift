@@ -29,46 +29,47 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Token count thresholds for the menu bar icon color.")
                             .font(.caption).foregroundColor(.secondary)
-                        HStack {
-                            Circle().fill(.green).frame(width: 8, height: 8)
-                            Text("Green below:")
-                            TextField("100000", text: $greenThreshold)
-                                .textFieldStyle(.roundedBorder).frame(width: 120)
-                            Text("tokens").foregroundColor(.secondary)
-                        }
-                        HStack {
-                            Circle().fill(.yellow).frame(width: 8, height: 8)
-                            Text("Yellow below:")
-                            TextField("500000", text: $yellowThreshold)
-                                .textFieldStyle(.roundedBorder).frame(width: 120)
-                            Text("tokens").foregroundColor(.secondary)
-                        }
+
+                        thresholdRow(color: .green, label: "Green below:", text: $greenThreshold)
+                        thresholdRow(color: .yellow, label: "Yellow below:", text: $yellowThreshold)
+
                         HStack {
                             Circle().fill(.red).frame(width: 8, height: 8)
                             Text("Red above yellow threshold").foregroundColor(.secondary)
+                            Spacer()
                         }
-                    }.padding(8)
+                    }
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 GroupBox(label: Label("Model Pricing", systemImage: "dollarsign.circle")) {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 16) {
                         Text("Cost per 1M tokens (USD). Used for estimated costs.")
                             .font(.caption).foregroundColor(.secondary)
+
                         PricingRow(model: "Opus", input: $opusInput, output: $opusOutput, cacheRead: $opusCacheRead, cacheWrite: $opusCacheWrite)
                         PricingRow(model: "Sonnet", input: $sonnetInput, output: $sonnetOutput, cacheRead: $sonnetCacheRead, cacheWrite: $sonnetCacheWrite)
                         PricingRow(model: "Haiku", input: $haikuInput, output: $haikuOutput, cacheRead: $haikuCacheRead, cacheWrite: $haikuCacheWrite)
-                    }.padding(8)
+                    }
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 GroupBox(label: Label("General", systemImage: "gearshape")) {
                     VStack(alignment: .leading, spacing: 12) {
                         Toggle("Launch at login", isOn: $launchAtLogin)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
                         HStack {
                             Text("Claude data path:")
+                                .fixedSize()
                             TextField("~/.claude", text: $claudePath)
                                 .textFieldStyle(.roundedBorder)
                         }
-                    }.padding(8)
+                    }
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 HStack {
@@ -76,10 +77,24 @@ struct SettingsView: View {
                     Button("Reset to Defaults") { loadDefaults() }
                     Button("Save") { save() }.buttonStyle(.borderedProminent)
                 }
-            }.padding(20)
+            }
+            .padding(24)
         }
-        .frame(width: 450, height: 500)
+        .frame(width: 480, height: 520)
         .onAppear { loadCurrent() }
+    }
+
+    private func thresholdRow(color: Color, label: String, text: Binding<String>) -> some View {
+        HStack {
+            Circle().fill(color).frame(width: 8, height: 8)
+            Text(label)
+                .fixedSize()
+            TextField("100000", text: text)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 120)
+            Text("tokens").foregroundColor(.secondary)
+            Spacer()
+        }
     }
 
     private func loadCurrent() {
@@ -127,7 +142,7 @@ struct SettingsView: View {
             do {
                 if launchAtLogin { try SMAppService.mainApp.register() }
                 else { try SMAppService.mainApp.unregister() }
-            } catch { /* silently fail */ }
+            } catch {}
         }
     }
 }
@@ -138,10 +153,11 @@ struct PricingRow: View {
     @Binding var output: String
     @Binding var cacheRead: String
     @Binding var cacheWrite: String
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(model).font(.system(size: 12, weight: .semibold))
-            HStack(spacing: 8) {
+            HStack(spacing: 0) {
                 PricingField(label: "Input", value: $input)
                 PricingField(label: "Output", value: $output)
                 PricingField(label: "Cache R", value: $cacheRead)
@@ -154,11 +170,16 @@ struct PricingRow: View {
 struct PricingField: View {
     let label: String
     @Binding var value: String
+
     var body: some View {
-        VStack(spacing: 2) {
-            Text(label).font(.system(size: 8)).foregroundColor(.secondary)
+        VStack(spacing: 3) {
+            Text(label)
+                .font(.system(size: 9))
+                .foregroundColor(.secondary)
             TextField("0", text: $value)
-                .textFieldStyle(.roundedBorder).frame(width: 70).font(.system(size: 11))
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 11))
         }
+        .frame(maxWidth: .infinity)
     }
 }
