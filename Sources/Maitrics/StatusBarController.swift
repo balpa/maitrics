@@ -18,17 +18,16 @@ final class StatusBarController {
         setupPopover()
         setupFileWatcher()
         dataManager.refresh()
-        updateIcon()
+        updateStatusText()
     }
 
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "gauge.with.dots.needle.33percent", accessibilityDescription: "Maitrics")
-            button.image?.size = NSSize(width: 18, height: 18)
             button.action = #selector(togglePopover)
             button.target = self
         }
+        updateStatusText()
     }
 
     private func setupPopover() {
@@ -50,30 +49,64 @@ final class StatusBarController {
     private func setupFileWatcher() {
         fileWatcher = FileWatcher(path: settings.statsCachePath.path) { [weak self] in
             self?.dataManager.refresh()
-            self?.updateIcon()
+            self?.updateStatusText()
         }
         fileWatcher?.start()
     }
 
-    func updateIcon() {
+    func updateStatusText() {
         guard let button = statusItem.button else { return }
-        let color: NSColor
-        switch dataManager.iconThresholdLevel {
-        case .green: color = NSColor(red: 74/255, green: 222/255, blue: 128/255, alpha: 1)
-        case .yellow: color = NSColor(red: 250/255, green: 204/255, blue: 21/255, alpha: 1)
-        case .red: color = NSColor(red: 248/255, green: 113/255, blue: 113/255, alpha: 1)
+
+        if let usage = dataManager.usageData {
+            let sessionPct = Int(usage.fiveHour.utilization)
+            let weeklyPct = Int(usage.sevenDay.utilization)
+
+            let text = NSMutableAttributedString()
+
+            // "S:" label
+            text.append(NSAttributedString(string: "S:", attributes: [
+                .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .medium),
+                .foregroundColor: NSColor(white: 0.55, alpha: 1)
+            ]))
+            // Session percentage
+            text.append(NSAttributedString(string: "\(sessionPct)%", attributes: [
+                .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .semibold),
+                .foregroundColor: colorForPct(sessionPct)
+            ]))
+
+            // separator
+            text.append(NSAttributedString(string: " ", attributes: [
+                .font: NSFont.systemFont(ofSize: 10)
+            ]))
+
+            // "W:" label
+            text.append(NSAttributedString(string: "W:", attributes: [
+                .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .medium),
+                .foregroundColor: NSColor(white: 0.55, alpha: 1)
+            ]))
+            // Weekly percentage
+            text.append(NSAttributedString(string: "\(weeklyPct)%", attributes: [
+                .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .semibold),
+                .foregroundColor: colorForPct(weeklyPct)
+            ]))
+
+            button.image = nil
+            button.attributedTitle = text
+        } else {
+            // Fallback: show icon when no API data
+            button.attributedTitle = NSAttributedString(string: "")
+            let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+            let image = NSImage(systemSymbolName: "gauge.with.dots.needle.33percent", accessibilityDescription: "Maitrics")?.withSymbolConfiguration(config)
+            image?.isTemplate = true
+            button.image = image
         }
-        let config = NSImage.SymbolConfiguration(pointSize: 16, weight: .medium)
-        var image = NSImage(systemSymbolName: "gauge.with.dots.needle.33percent", accessibilityDescription: "Maitrics")
-        image = image?.withSymbolConfiguration(config)
-        let tinted = NSImage(size: image?.size ?? NSSize(width: 18, height: 18), flipped: false) { rect in
-            image?.draw(in: rect)
-            color.set()
-            rect.fill(using: .sourceAtop)
-            return true
-        }
-        tinted.isTemplate = false
-        button.image = tinted
+    }
+
+    private func colorForPct(_ pct: Int) -> NSColor {
+        if pct >= 90 { return NSColor(red: 255/255, green: 85/255, blue: 85/255, alpha: 1) }
+        if pct >= 70 { return NSColor(red: 230/255, green: 200/255, blue: 0/255, alpha: 1) }
+        if pct >= 50 { return NSColor(red: 255/255, green: 176/255, blue: 85/255, alpha: 1) }
+        return NSColor(red: 74/255, green: 222/255, blue: 128/255, alpha: 1)
     }
 
     @objc private func togglePopover() {
@@ -81,7 +114,7 @@ final class StatusBarController {
             closePopover()
         } else {
             dataManager.refresh()
-            updateIcon()
+            updateStatusText()
             if let button = statusItem.button {
                 popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             }

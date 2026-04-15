@@ -31,8 +31,8 @@ struct FooterView: View {
                 NSApplication.shared.terminate(nil)
             }
             .buttonStyle(.plain)
-            .font(.system(size: 9))
-            .foregroundColor(Color(white: 0.4))
+            .font(.system(size: 9, weight: .medium))
+            .foregroundColor(Color(red: 255/255, green: 85/255, blue: 85/255))
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 10)
