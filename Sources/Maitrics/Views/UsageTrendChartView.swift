@@ -71,8 +71,12 @@ struct UsageTrendChartView: View {
 
     private var hoveredItem: ChartDataPoint? {
         guard let hoveredDate else { return nil }
-        let hoveredStr = Self.dayFormatter.string(from: hoveredDate)
-        return displayData.first { Self.dayFormatter.string(from: $0.date) == hoveredStr }
+        // Snap to the closest data point by calendar day
+        let cal = Calendar.current
+        return displayData.min(by: {
+            abs(cal.startOfDay(for: $0.date).timeIntervalSince(cal.startOfDay(for: hoveredDate)))
+            < abs(cal.startOfDay(for: $1.date).timeIntervalSince(cal.startOfDay(for: hoveredDate)))
+        })
     }
 
     var body: some View {
@@ -83,14 +87,17 @@ struct UsageTrendChartView: View {
                 HStack(spacing: 2) {
                     ForEach(["7d", "30d", "All"], id: \.self) { label in
                         let tag = label == "7d" ? 0 : label == "30d" ? 1 : 2
-                        Button(label) { selectedRange = tag }
-                            .buttonStyle(.plain)
-                            .font(.system(size: 9, weight: selectedRange == tag ? .bold : .regular))
-                            .foregroundColor(selectedRange == tag ? .white : Color(white: 0.45))
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(selectedRange == tag ? Color.blue.opacity(0.6) : Color.clear)
-                            .cornerRadius(4)
+                        Button(action: { selectedRange = tag }) {
+                            Text(label)
+                                .font(.system(size: 9, weight: selectedRange == tag ? .bold : .regular))
+                                .foregroundColor(selectedRange == tag ? .white : Color(white: 0.45))
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(selectedRange == tag ? Color.blue.opacity(0.6) : Color.clear)
+                                .cornerRadius(4)
+                        }
+                        .buttonStyle(.plain)
+                        .focusable(false)
                     }
                 }
 
@@ -121,7 +128,7 @@ struct UsageTrendChartView: View {
                             : Color(red: 59/255, green: 130/255, blue: 246/255)
                     )
                     .cornerRadius(3)
-                    .opacity(hoveredDate == nil || hoveredItem?.date == item.date ? 1 : 0.4)
+                    .opacity(hoveredItem == nil || hoveredItem?.id == item.id ? 1 : 0.4)
                 }
                 .chartXAxis {
                     AxisMarks(values: xAxisDates) { value in
@@ -196,20 +203,20 @@ struct UsageTrendChartView: View {
     /// Select which dates get x-axis labels to avoid overlapping
     private var xAxisDates: [Date] {
         let dates = displayData.map(\.date)
+        guard !dates.isEmpty else { return [] }
+        let maxLabels = 6
+
         switch selectedRange {
         case 0:
             return dates // 7 days — show all
         case 1:
-            // 30d — show every 5th date
-            return dates.enumerated().compactMap { i, d in i % 5 == 0 ? d : nil }
+            // 30d — show evenly spaced labels
+            let step = max(1, dates.count / maxLabels)
+            return dates.enumerated().compactMap { i, d in i % step == 0 ? d : nil }
         default:
-            // All — show ~first of each month
-            var seen = Set<String>()
-            return dates.filter { date in
-                let key = Self.monthYearFormatter.string(from: date)
-                if seen.contains(key) { return false }
-                seen.insert(key)
-                return true
+            // All — show evenly spaced labels
+            let step = max(1, dates.count / maxLabels)
+            return dates.enumerated().compactMap { i, d in i % step == 0 ? d : nil
             }
         }
     }
