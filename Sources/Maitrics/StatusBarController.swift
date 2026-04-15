@@ -78,23 +78,22 @@ final class StatusBarController {
 
             let text = NSMutableAttributedString()
             let digitFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
-            let dimColor = NSColor(white: 0.50, alpha: 1)
+            let labelFont = NSFont.systemFont(ofSize: 8.5, weight: .medium)
+            let dimColor = NSColor(white: 0.45, alpha: 1)
 
-            // Colored dot for session
-            text.append(coloredDot(for: sessionPct, size: 6))
-            text.append(str(" ", font: digitFont, color: dimColor))
-
-            // Session percentage
+            // Session: dot + label + pct
+            text.append(coloredDot(for: sessionPct, size: 5.5))
+            text.append(str(" ", font: labelFont, color: dimColor))
+            text.append(str("5h ", font: labelFont, color: dimColor))
             text.append(str("\(sessionPct)%", font: digitFont, color: colorForPct(sessionPct)))
 
             // Separator
-            text.append(str("  ", font: digitFont, color: dimColor))
+            text.append(str("  ", font: labelFont, color: dimColor))
 
-            // Colored dot for weekly
-            text.append(coloredDot(for: weeklyPct, size: 6))
-            text.append(str(" ", font: digitFont, color: dimColor))
-
-            // Weekly percentage
+            // Weekly: dot + label + pct
+            text.append(coloredDot(for: weeklyPct, size: 5.5))
+            text.append(str(" ", font: labelFont, color: dimColor))
+            text.append(str("7d ", font: labelFont, color: dimColor))
             text.append(str("\(weeklyPct)%", font: digitFont, color: colorForPct(weeklyPct)))
 
             button.image = nil
