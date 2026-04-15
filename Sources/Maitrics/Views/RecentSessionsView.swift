@@ -9,7 +9,7 @@ struct RecentSessionsView: View {
             if sessions.isEmpty {
                 Text("No recent sessions")
                     .font(.system(size: 12))
-                    .foregroundColor(Color(white: 0.4))
+                    .foregroundColor(Color(white: 0.65))
                     .padding(.vertical, 8)
             } else {
                 ForEach(sessions) { session in
@@ -32,7 +32,7 @@ struct SessionRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(session.firstPrompt)
                     .font(.system(size: 12))
-                    .foregroundColor(Color(white: 0.8))
+                    .foregroundColor(Color(white: 0.9))
                     .lineLimit(1)
                     .truncationMode(.tail)
                 HStack(spacing: 4) {
@@ -45,7 +45,7 @@ struct SessionRow: View {
                     Text(Formatting.timeAgo(session.modified))
                 }
                 .font(.system(size: 9))
-                .foregroundColor(Color(white: 0.35))
+                .foregroundColor(Color(white: 0.6))
                 .lineLimit(1)
             }
             Spacer()
@@ -55,7 +55,7 @@ struct SessionRow: View {
                     .foregroundColor(Color(red: 96/255, green: 165/255, blue: 250/255))
                 Text("~\(Formatting.cost(session.estimatedCost))")
                     .font(.system(size: 9))
-                    .foregroundColor(Color(white: 0.35))
+                    .foregroundColor(Color(white: 0.6))
             }
         }
         .padding(.vertical, 4)

@@ -90,7 +90,7 @@ struct UsageTrendChartView: View {
                         Button(action: { selectedRange = tag }) {
                             Text(label)
                                 .font(.system(size: 9, weight: selectedRange == tag ? .bold : .regular))
-                                .foregroundColor(selectedRange == tag ? .white : Color(white: 0.45))
+                                .foregroundColor(selectedRange == tag ? .white : Color(white: 0.65))
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 2)
                                 .background(selectedRange == tag ? Color.blue.opacity(0.6) : Color.clear)
@@ -106,7 +106,7 @@ struct UsageTrendChartView: View {
                 if let item = hoveredItem {
                     Text("\(Self.tooltipDateFormatter.string(from: item.date)) · \(Formatting.tokens(item.tokens))")
                         .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(Color(white: 0.6))
+                        .foregroundColor(Color(white: 0.75))
                         .transition(.opacity)
                 }
             }
@@ -114,7 +114,7 @@ struct UsageTrendChartView: View {
             if displayData.isEmpty {
                 Text("No data for this period")
                     .font(.system(size: 11))
-                    .foregroundColor(Color(white: 0.35))
+                    .foregroundColor(Color(white: 0.6))
                     .frame(maxWidth: .infinity, minHeight: 100)
             } else {
                 Chart(displayData) { item in
@@ -139,7 +139,7 @@ struct UsageTrendChartView: View {
                                     .foregroundColor(
                                         Self.dayFormatter.string(from: date) == Self.dayFormatter.string(from: Date())
                                             ? Color(red: 74/255, green: 222/255, blue: 128/255)
-                                            : Color(white: 0.35)
+                                            : Color(white: 0.6)
                                     )
                             }
                         }
@@ -151,7 +151,7 @@ struct UsageTrendChartView: View {
                             if let intVal = value.as(Int.self) {
                                 Text(Formatting.tokens(intVal))
                                     .font(.system(size: 8))
-                                    .foregroundColor(Color(white: 0.35))
+                                    .foregroundColor(Color(white: 0.6))
                             }
                         }
                     }

@@ -12,7 +12,7 @@ struct HeaderView: View {
             Button(action: onSettingsOpen) {
                 Image(systemName: "gearshape")
                     .font(.system(size: 14))
-                    .foregroundColor(Color(white: 0.4))
+                    .foregroundColor(Color(white: 0.65))
             }
             .buttonStyle(.plain)
             .focusable(false)

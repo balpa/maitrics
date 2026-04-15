@@ -55,7 +55,7 @@ struct RateLimitsView: View {
                     HStack {
                         Text("Extra Credits")
                             .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(Color(white: 0.75))
+                            .foregroundColor(Color(white: 0.85))
                         Spacer()
                         if let used = extra.usedCredits, let limit = extra.monthlyLimit {
                             Text(String(format: "$%.2f / $%.2f", used, limit))
@@ -81,10 +81,10 @@ struct RateLimitsView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "person.crop.circle.badge.questionmark")
                         .font(.system(size: 11))
-                        .foregroundColor(Color(white: 0.35))
+                        .foregroundColor(Color(white: 0.6))
                     Text("No OAuth token found")
                         .font(.system(size: 11))
-                        .foregroundColor(Color(white: 0.4))
+                        .foregroundColor(Color(white: 0.65))
                 }
             }
         }
@@ -116,10 +116,10 @@ struct UsageBarRow: View {
             HStack {
                 Text(label)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(Color(white: 0.75))
+                    .foregroundColor(Color(white: 0.85))
                 Text(sublabel)
                     .font(.system(size: 9))
-                    .foregroundColor(Color(white: 0.35))
+                    .foregroundColor(Color(white: 0.6))
                 Spacer()
                 Text(String(format: "%.0f%%", percentage))
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
@@ -127,7 +127,7 @@ struct UsageBarRow: View {
                 if let resetsAt {
                     Text("resets \(Formatting.timeAgo(resetsAt))")
                         .font(.system(size: 9))
-                        .foregroundColor(Color(white: 0.3))
+                        .foregroundColor(Color(white: 0.55))
                 }
             }
 

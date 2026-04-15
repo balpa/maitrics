@@ -9,22 +9,22 @@ struct FooterView: View {
         HStack {
             HStack(spacing: 4) {
                 Circle()
-                    .fill(isWatching ? Color(red: 74/255, green: 222/255, blue: 128/255) : Color(white: 0.3))
+                    .fill(isWatching ? Color(red: 74/255, green: 222/255, blue: 128/255) : Color(white: 0.55))
                     .frame(width: 5, height: 5)
                 Text(isWatching ? "Live · watching ~/.claude" : "Paused")
                     .font(.system(size: 9))
-                    .foregroundColor(Color(white: 0.3))
+                    .foregroundColor(Color(white: 0.55))
             }
 
             Spacer()
 
             Text("Last: \(lastRefreshText)")
                 .font(.system(size: 9))
-                .foregroundColor(Color(white: 0.3))
+                .foregroundColor(Color(white: 0.55))
 
             Text("·")
                 .font(.system(size: 9))
-                .foregroundColor(Color(white: 0.2))
+                .foregroundColor(Color(white: 0.5))
                 .padding(.horizontal, 2)
 
             Button("Quit") {

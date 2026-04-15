@@ -42,31 +42,10 @@ struct PopoverContentView: View {
 
 struct VisualEffectBackground: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
-        let wrapper = NSView()
-        wrapper.wantsLayer = true
-
-        // Dark opaque base to prevent wallpaper bleed-through
-        let bgLayer = CALayer()
-        bgLayer.backgroundColor = NSColor(red: 0.08, green: 0.08, blue: 0.12, alpha: 0.92).cgColor
-        wrapper.layer = bgLayer
-
-        // Subtle vibrancy on top
-        let vibrancy = NSVisualEffectView()
-        vibrancy.material = .hudWindow
-        vibrancy.blendingMode = .behindWindow
-        vibrancy.state = .active
-        vibrancy.appearance = NSAppearance(named: .darkAqua)
-        vibrancy.alphaValue = 0.3
-        vibrancy.translatesAutoresizingMaskIntoConstraints = false
-        wrapper.addSubview(vibrancy)
-        NSLayoutConstraint.activate([
-            vibrancy.leadingAnchor.constraint(equalTo: wrapper.leadingAnchor),
-            vibrancy.trailingAnchor.constraint(equalTo: wrapper.trailingAnchor),
-            vibrancy.topAnchor.constraint(equalTo: wrapper.topAnchor),
-            vibrancy.bottomAnchor.constraint(equalTo: wrapper.bottomAnchor),
-        ])
-
-        return wrapper
+        let view = NSView()
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor(red: 0.07, green: 0.07, blue: 0.11, alpha: 1.0).cgColor
+        return view
     }
     func updateNSView(_ nsView: NSView, context: Context) {}
 }

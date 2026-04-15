@@ -33,7 +33,7 @@ struct StatCard: View {
                 .foregroundColor(accentColor)
             Text(label)
                 .font(.system(size: 9, weight: .semibold))
-                .foregroundColor(Color(white: 0.5))
+                .foregroundColor(Color(white: 0.7))
                 .tracking(0.5)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -49,7 +49,7 @@ struct SectionLabel: View {
     var body: some View {
         Text(text.uppercased())
             .font(.system(size: 10, weight: .semibold))
-            .foregroundColor(Color(white: 0.35))
+            .foregroundColor(Color(white: 0.6))
             .tracking(1)
     }
 }

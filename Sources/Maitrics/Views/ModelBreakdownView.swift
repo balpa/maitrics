@@ -11,7 +11,7 @@ struct ModelBreakdownView: View {
                 HStack(spacing: 8) {
                     Text(model.name)
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(Color(white: 0.65))
+                        .foregroundColor(Color(white: 0.8))
                         .frame(width: 48, alignment: .trailing)
                     GeometryReader { geo in
                         let fraction = maxTokens > 0 ? CGFloat(model.tokens) / CGFloat(maxTokens) : 0
@@ -24,7 +24,7 @@ struct ModelBreakdownView: View {
                     .cornerRadius(3)
                     Text(Formatting.tokens(model.tokens))
                         .font(.system(size: 9))
-                        .foregroundColor(Color(white: 0.5))
+                        .foregroundColor(Color(white: 0.7))
                         .frame(width: 44, alignment: .trailing)
                 }
             }
