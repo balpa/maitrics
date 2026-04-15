@@ -56,7 +56,7 @@ public final class ClaudeDataManager {
 
     public var modelBreakdown: [(name: String, tokens: Int, color: String)] {
         let grouped = groupByFamily(todayModelTokens)
-        return grouped.sorted { $0.value > $1.value }.map { family, tokens in
+        return grouped.filter { !$0.key.isEmpty && $0.value > 0 }.sorted { $0.value > $1.value }.map { family, tokens in
             let color: String
             switch family {
             case "Opus": color = "orange"

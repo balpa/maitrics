@@ -107,7 +107,7 @@ struct UsageTrendChartView: View {
                 }
                 .chartXAxis {
                     AxisMarks(values: displayData.map(\.date)) { value in
-                        AxisValueLabel {
+                        AxisValueLabel(centered: true) {
                             if let date = value.as(Date.self) {
                                 Text(xAxisLabel(for: date))
                                     .font(.system(size: 8))

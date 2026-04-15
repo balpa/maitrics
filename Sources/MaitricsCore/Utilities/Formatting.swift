@@ -34,6 +34,8 @@ public enum Formatting {
         if lower.contains("opus") { return "Opus" }
         if lower.contains("sonnet") { return "Sonnet" }
         if lower.contains("haiku") { return "Haiku" }
+        // Skip synthetic/internal model entries
+        if lower.contains("synthetic") || lower.hasPrefix("<") { return "" }
         return modelId
     }
 }
