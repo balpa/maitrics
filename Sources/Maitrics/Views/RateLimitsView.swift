@@ -125,7 +125,7 @@ struct UsageBarRow: View {
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .foregroundColor(barColors != nil ? barColors!.1 : barColor)
                 if let resetsAt {
-                    Text("resets \(Formatting.timeAgo(resetsAt))")
+                    Text("resets in \(Formatting.timeUntil(resetsAt))")
                         .font(.system(size: 9))
                         .foregroundColor(Color(white: 0.55))
                 }

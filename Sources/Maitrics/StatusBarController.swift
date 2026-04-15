@@ -8,7 +8,6 @@ final class StatusBarController {
     private var popover: NSPopover!
     private var fileWatcher: FileWatcher?
     private var eventMonitor: Any?
-    private var settingsWindow: NSWindow?
     let dataManager: ClaudeDataManager
     let settings: AppSettings
 
@@ -53,8 +52,7 @@ final class StatusBarController {
         let hostingController = NSHostingController(
             rootView: PopoverContentView(
                 dataManager: dataManager,
-                settings: settings,
-                onSettingsOpen: { [weak self] in self?.openSettings() }
+                settings: settings
             )
             .preferredColorScheme(.dark)
         )
@@ -202,18 +200,4 @@ final class StatusBarController {
         }
     }
 
-    private func openSettings() {
-        closePopover()
-        settingsWindow = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 520),
-            styleMask: [.titled, .closable],
-            backing: .buffered, defer: false
-        )
-        settingsWindow?.title = "Maitrics Settings"
-        settingsWindow?.center()
-        settingsWindow?.appearance = NSAppearance(named: .darkAqua)
-        settingsWindow?.contentViewController = NSHostingController(rootView: SettingsView(settings: settings))
-        settingsWindow?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-    }
 }

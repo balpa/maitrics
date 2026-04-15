@@ -29,6 +29,26 @@ public enum Formatting {
         relativeFormatter.localizedString(for: date, relativeTo: Date())
     }
 
+    /// More precise "resets in" format: "1h 23m", "45m", "5d 3h"
+    public static func timeUntil(_ date: Date) -> String {
+        let seconds = date.timeIntervalSince(Date())
+        guard seconds > 0 else { return "now" }
+
+        let totalMinutes = Int(seconds) / 60
+        let hours = totalMinutes / 60
+        let minutes = totalMinutes % 60
+        let days = hours / 24
+        let remainingHours = hours % 24
+
+        if days > 0 {
+            return remainingHours > 0 ? "\(days)d \(remainingHours)h" : "\(days)d"
+        } else if hours > 0 {
+            return minutes > 0 ? "\(hours)h \(minutes)m" : "\(hours)h"
+        } else {
+            return "\(max(1, minutes))m"
+        }
+    }
+
     public static func shortModelName(_ modelId: String) -> String {
         let lower = modelId.lowercased()
         if lower.contains("opus") { return "Opus" }

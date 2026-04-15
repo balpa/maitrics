@@ -4,16 +4,32 @@ import MaitricsCore
 struct PopoverContentView: View {
     @Bindable var dataManager: ClaudeDataManager
     let settings: AppSettings
-    var onSettingsOpen: () -> Void
+    @State private var showSettings = false
+
     var body: some View {
         ZStack {
             VisualEffectBackground()
+
             if dataManager.statsCache == nil && dataManager.usageData == nil && !dataManager.isLoading {
                 EmptyStateView()
+            } else if showSettings {
+                VStack(spacing: 0) {
+                    HeaderView(
+                        profileData: dataManager.profileData,
+                        showSettings: true,
+                        onToggleSettings: { showSettings = false }
+                    )
+                    Divider().opacity(0.06)
+                    SettingsView(settings: settings)
+                }
             } else {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 0) {
-                        HeaderView(onSettingsOpen: onSettingsOpen)
+                        HeaderView(
+                            profileData: dataManager.profileData,
+                            showSettings: false,
+                            onToggleSettings: { showSettings = true }
+                        )
                         Divider().opacity(0.06)
                         RateLimitsView(usageData: dataManager.usageData)
                         Divider().opacity(0.06)

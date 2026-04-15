@@ -6,6 +6,7 @@ public final class ClaudeDataManager {
     public private(set) var recentSessions: [RecentSession] = []
     public private(set) var liveDailyTokens: [String: [String: Int]] = [:] // date -> model -> tokens
     public private(set) var usageData: UsageData?
+    public private(set) var profileData: ProfileData?
     public private(set) var lastRefresh: Date?
     public private(set) var isLoading = false
     public private(set) var error: String?
@@ -152,19 +153,22 @@ public final class ClaudeDataManager {
                 }
             }
 
-            // Fetch API usage data
+            // Fetch API data
             let newUsageData = await UsageAPIClient.fetchUsage()
+            let newProfileData = await UsageAPIClient.fetchProfile()
 
             let finalStats = newStatsCache
             let finalSessions = newSessions
             let finalError = newError
             let finalUsage = newUsageData
+            let finalProfile = newProfileData
             let finalLive = newLiveDailyTokens
             await MainActor.run {
                 self.statsCache = finalStats
                 self.recentSessions = finalSessions
                 self.liveDailyTokens = finalLive
                 if let finalUsage { self.usageData = finalUsage }
+                if let finalProfile { self.profileData = finalProfile }
                 if let finalError { self.error = finalError }
                 self.lastRefresh = Date()
                 self.isLoading = false
