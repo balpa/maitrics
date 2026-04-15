@@ -20,7 +20,7 @@ struct PopoverContentView: View {
                         TodaySummaryView(
                             cost: dataManager.todayEstimatedCost,
                             tokens: dataManager.todayTokens,
-                            sessions: dataManager.todayActivity?.sessionCount ?? 0
+                            sessions: dataManager.todaySessionCount
                         )
                         ModelBreakdownView(models: dataManager.modelBreakdown)
                         Divider().opacity(0.06)

@@ -37,10 +37,16 @@ public final class ClaudeDataManager {
         return statsCache.dailyModelTokens.first { $0.date == todayStr }?.tokensByModel ?? [:]
     }
 
-    public var todayActivity: DailyActivity? {
-        guard let statsCache else { return nil }
+    public var todaySessionCount: Int {
         let todayStr = Self.dateString(for: Date())
-        return statsCache.dailyActivity.first { $0.date == todayStr }
+        // Check stats cache first
+        if let statsCache,
+           let activity = statsCache.dailyActivity.first(where: { $0.date == todayStr }) {
+            return activity.sessionCount
+        }
+        // Fall back to counting recent sessions modified today
+        let todayStart = Calendar.current.startOfDay(for: Date())
+        return recentSessions.filter { $0.modified >= todayStart }.count
     }
 
     public var todayEstimatedCost: Double {
