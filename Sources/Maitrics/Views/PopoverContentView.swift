@@ -41,13 +41,32 @@ struct PopoverContentView: View {
 }
 
 struct VisualEffectBackground: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = .hudWindow
-        view.blendingMode = .behindWindow
-        view.state = .active
-        view.appearance = NSAppearance(named: .darkAqua)
-        return view
+    func makeNSView(context: Context) -> NSView {
+        let wrapper = NSView()
+        wrapper.wantsLayer = true
+
+        // Dark opaque base to prevent wallpaper bleed-through
+        let bgLayer = CALayer()
+        bgLayer.backgroundColor = NSColor(red: 0.08, green: 0.08, blue: 0.12, alpha: 0.92).cgColor
+        wrapper.layer = bgLayer
+
+        // Subtle vibrancy on top
+        let vibrancy = NSVisualEffectView()
+        vibrancy.material = .hudWindow
+        vibrancy.blendingMode = .behindWindow
+        vibrancy.state = .active
+        vibrancy.appearance = NSAppearance(named: .darkAqua)
+        vibrancy.alphaValue = 0.3
+        vibrancy.translatesAutoresizingMaskIntoConstraints = false
+        wrapper.addSubview(vibrancy)
+        NSLayoutConstraint.activate([
+            vibrancy.leadingAnchor.constraint(equalTo: wrapper.leadingAnchor),
+            vibrancy.trailingAnchor.constraint(equalTo: wrapper.trailingAnchor),
+            vibrancy.topAnchor.constraint(equalTo: wrapper.topAnchor),
+            vibrancy.bottomAnchor.constraint(equalTo: wrapper.bottomAnchor),
+        ])
+
+        return wrapper
     }
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }
