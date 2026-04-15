@@ -8,12 +8,14 @@ struct PopoverContentView: View {
     var body: some View {
         ZStack {
             VisualEffectBackground()
-            if dataManager.statsCache == nil && !dataManager.isLoading {
+            if dataManager.statsCache == nil && dataManager.usageData == nil && !dataManager.isLoading {
                 EmptyStateView()
             } else {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 0) {
                         HeaderView(onSettingsOpen: onSettingsOpen)
+                        Divider().opacity(0.06)
+                        RateLimitsView(usageData: dataManager.usageData)
                         Divider().opacity(0.06)
                         TodaySummaryView(
                             cost: dataManager.todayEstimatedCost,

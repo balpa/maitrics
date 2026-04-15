@@ -4,6 +4,7 @@ import Foundation
 public final class ClaudeDataManager {
     public private(set) var statsCache: StatsCache?
     public private(set) var recentSessions: [RecentSession] = []
+    public private(set) var usageData: UsageData?
     public private(set) var lastRefresh: Date?
     public private(set) var isLoading = false
     public private(set) var error: String?
@@ -113,12 +114,17 @@ public final class ClaudeDataManager {
                 }
             }
 
+            // Fetch API usage data
+            let newUsageData = await UsageAPIClient.fetchUsage()
+
             let finalStats = newStatsCache
             let finalSessions = newSessions
             let finalError = newError
+            let finalUsage = newUsageData
             await MainActor.run {
                 self.statsCache = finalStats
                 self.recentSessions = finalSessions
+                if let finalUsage { self.usageData = finalUsage }
                 if let finalError { self.error = finalError }
                 self.lastRefresh = Date()
                 self.isLoading = false
