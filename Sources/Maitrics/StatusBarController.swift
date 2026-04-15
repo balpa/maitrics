@@ -93,7 +93,7 @@ final class StatusBarController {
         let barWidth: CGFloat = 50
         let barHeight: CGFloat = 5
         let spacing: CGFloat = 3
-        let labelWidth: CGFloat = 10
+        let labelWidth: CGFloat = 11
         let totalWidth = labelWidth + 2 + barWidth
         let totalHeight = barHeight * 2 + spacing
         let cornerRadius: CGFloat = 2.5
@@ -102,13 +102,13 @@ final class StatusBarController {
             let topBarY = spacing + barHeight  // session bar (top)
             let bottomBarY: CGFloat = 0        // weekly bar (bottom)
 
-            // "S" label
+            // "S" and "W" labels — red for visibility
             let labelAttrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 7, weight: .bold),
-                .foregroundColor: NSColor(white: 0.85, alpha: 1)
+                .font: NSFont.systemFont(ofSize: 8, weight: .heavy),
+                .foregroundColor: NSColor(red: 1.0, green: 0.4, blue: 0.35, alpha: 1)
             ]
-            NSString("S").draw(at: NSPoint(x: 0, y: topBarY - 1), withAttributes: labelAttrs)
-            NSString("W").draw(at: NSPoint(x: 0, y: bottomBarY - 1), withAttributes: labelAttrs)
+            NSString("S").draw(at: NSPoint(x: 0, y: topBarY - 1.5), withAttributes: labelAttrs)
+            NSString("W").draw(at: NSPoint(x: 0, y: bottomBarY - 1.5), withAttributes: labelAttrs)
 
             let barX = labelWidth + 2
 

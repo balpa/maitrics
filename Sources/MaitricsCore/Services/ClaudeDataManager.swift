@@ -133,7 +133,7 @@ public final class ClaudeDataManager {
                 newSessions = topSessions.map { session in
                     let tokenUsage = self.cachedTokenUsage(for: session, settings: settings)
                     let cost = tokenUsage.map { CostCalculator.cost(for: $0, customPricing: settings.customPricing) } ?? 0
-                    let totalTokens = tokenUsage?.totalTokens ?? 0
+                    let totalTokens = tokenUsage?.displayTokens ?? 0
                     return RecentSession(
                         sessionId: session.sessionId,
                         firstPrompt: session.firstPrompt,

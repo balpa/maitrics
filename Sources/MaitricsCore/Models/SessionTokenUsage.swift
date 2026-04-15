@@ -12,6 +12,8 @@ public struct SessionTokenUsage: Sendable {
     public var totalCacheReadTokens: Int { byModel.values.reduce(0) { $0 + $1.cacheReadInputTokens } }
     public var totalCacheWriteTokens: Int { byModel.values.reduce(0) { $0 + $1.cacheCreationInputTokens } }
     public var totalTokens: Int { byModel.values.reduce(0) { $0 + $1.totalTokens } }
+    /// Input + output only (excludes cache) — matches stats-cache.json daily totals
+    public var displayTokens: Int { totalInputTokens + totalOutputTokens }
 }
 
 public struct ModelTokens: Sendable {

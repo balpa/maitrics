@@ -69,7 +69,6 @@ struct UsageTrendChartView: View {
                 SectionLabel(text: "Usage Trend")
                 Spacer()
 
-                // Tooltip on hover
                 if let item = hoveredItem {
                     Text("\(Self.tooltipDateFormatter.string(from: item.date)) · \(Formatting.tokens(item.tokens))")
                         .font(.system(size: 9, weight: .medium))
@@ -107,14 +106,14 @@ struct UsageTrendChartView: View {
                     .opacity(hoveredDate == nil || hoveredItem?.date == item.date ? 1 : 0.4)
                 }
                 .chartXAxis {
-                    AxisMarks(values: .stride(by: .day)) { value in
-                        if shouldShowLabel(for: value) {
-                            AxisValueLabel(format: xAxisFormat)
-                                .foregroundStyle(Color(white: 0.35))
-                                .font(.system(size: 8))
+                    AxisMarks(values: displayData.map(\.date)) { value in
+                        AxisValueLabel {
+                            if let date = value.as(Date.self) {
+                                Text(xAxisLabel(for: date))
+                                    .font(.system(size: 8))
+                                    .foregroundColor(Color(white: 0.35))
+                            }
                         }
-                        AxisGridLine()
-                            .foregroundStyle(Color.clear)
                     }
                 }
                 .chartYAxis {
@@ -153,29 +152,29 @@ struct UsageTrendChartView: View {
         .padding(.vertical, 14)
     }
 
-    private var xAxisFormat: Date.FormatStyle {
-        switch selectedRange {
-        case 0: return .dateTime.weekday(.abbreviated)
-        case 1: return .dateTime.day().month(.abbreviated)
-        default: return .dateTime.month(.abbreviated).year(.twoDigits)
-        }
-    }
+    private static let weekdayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "EEE"
+        return f
+    }()
 
-    /// Limit label density to avoid overlapping
-    private func shouldShowLabel(for value: AxisValue) -> Bool {
+    private static let dayMonthFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d"
+        return f
+    }()
+
+    private static let monthYearFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM ''yy"
+        return f
+    }()
+
+    private func xAxisLabel(for date: Date) -> String {
         switch selectedRange {
-        case 0:
-            return true // 7 days — show all
-        case 1:
-            // 30 days — show every 3rd day
-            guard let date = value.as(Date.self) else { return true }
-            let day = Calendar.current.component(.day, from: date)
-            return day % 3 == 1
-        default:
-            // All — show first of each month
-            guard let date = value.as(Date.self) else { return true }
-            let day = Calendar.current.component(.day, from: date)
-            return day <= 3
+        case 0: return Self.weekdayFormatter.string(from: date)
+        case 1: return Self.dayMonthFormatter.string(from: date)
+        default: return Self.monthYearFormatter.string(from: date)
         }
     }
 }
