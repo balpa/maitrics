@@ -101,7 +101,7 @@ final class StatusBarController {
             let bottomBarY: CGFloat = 0        // weekly bar (bottom)
 
             // "S" and "W" labels — white with dark outline for visibility
-            let labelFont = NSFont.systemFont(ofSize: 8, weight: .heavy)
+            let labelFont = NSFont.systemFont(ofSize: 6.5, weight: .heavy)
             let outlineAttrs: [NSAttributedString.Key: Any] = [
                 .font: labelFont,
                 .foregroundColor: NSColor.black,
@@ -113,10 +113,10 @@ final class StatusBarController {
                 .foregroundColor: NSColor.white
             ]
             // Draw outline first, then white text on top
-            NSString("S").draw(at: NSPoint(x: 0, y: topBarY - 4.5), withAttributes: outlineAttrs)
-            NSString("S").draw(at: NSPoint(x: 0, y: topBarY - 4.5), withAttributes: labelAttrs)
-            NSString("W").draw(at: NSPoint(x: 0, y: bottomBarY - 4.5), withAttributes: outlineAttrs)
-            NSString("W").draw(at: NSPoint(x: 0, y: bottomBarY - 4.5), withAttributes: labelAttrs)
+            NSString("S").draw(at: NSPoint(x: 0, y: topBarY - 2), withAttributes: outlineAttrs)
+            NSString("S").draw(at: NSPoint(x: 0, y: topBarY - 2), withAttributes: labelAttrs)
+            NSString("W").draw(at: NSPoint(x: 0, y: bottomBarY - 2), withAttributes: outlineAttrs)
+            NSString("W").draw(at: NSPoint(x: 0, y: bottomBarY - 2), withAttributes: labelAttrs)
 
             let barX = labelWidth + 2
 
