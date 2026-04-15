@@ -47,6 +47,20 @@ struct SettingsView: View {
                     pricingRow(model: "Opus", input: $opusInput, output: $opusOutput, cacheR: $opusCacheRead, cacheW: $opusCacheWrite)
                     pricingRow(model: "Sonnet", input: $sonnetInput, output: $sonnetOutput, cacheR: $sonnetCacheRead, cacheW: $sonnetCacheWrite)
                     pricingRow(model: "Haiku", input: $haikuInput, output: $haikuOutput, cacheR: $haikuCacheRead, cacheW: $haikuCacheWrite)
+
+                    HStack {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 8))
+                        if let version = PricingUpdater.lastUpdateDate {
+                            Text("Auto-updated: \(version)")
+                        } else {
+                            Text("Using built-in defaults")
+                        }
+                        Spacer()
+                        Text("Checks daily from GitHub")
+                    }
+                    .font(.system(size: 9))
+                    .foregroundColor(Color(white: 0.5))
                 }
 
                 Divider().opacity(0.1)

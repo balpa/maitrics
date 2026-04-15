@@ -30,7 +30,8 @@ public enum CostCalculator {
 
     public static func pricing(for modelId: String, customPricing: [String: PricingTier]? = nil) -> PricingTier {
         let family = modelFamily(modelId)
-        return customPricing?[family] ?? defaultPricing[family] ?? defaultPricing["sonnet"]!
+        let effective = PricingUpdater.effectivePricing
+        return customPricing?[family] ?? effective[family] ?? defaultPricing[family] ?? defaultPricing["sonnet"]!
     }
 
     public static func cost(for usage: ModelUsage, model: String, customPricing: [String: PricingTier]? = nil) -> Double {

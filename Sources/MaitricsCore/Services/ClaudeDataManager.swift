@@ -16,6 +16,7 @@ public final class ClaudeDataManager {
 
     public init(settings: AppSettings = AppSettings()) {
         self.settings = settings
+        PricingUpdater.loadCachedPricing()
     }
 
     // MARK: - Computed Properties
@@ -153,9 +154,10 @@ public final class ClaudeDataManager {
                 }
             }
 
-            // Fetch API data
+            // Fetch API data + check pricing updates
             let newUsageData = await UsageAPIClient.fetchUsage()
             let newProfileData = await UsageAPIClient.fetchProfile()
+            await PricingUpdater.checkForUpdates(settings: settings)
 
             let finalStats = newStatsCache
             let finalSessions = newSessions
