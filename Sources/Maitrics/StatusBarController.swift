@@ -113,10 +113,10 @@ final class StatusBarController {
                 .foregroundColor: NSColor.white
             ]
             // Draw outline first, then white text on top
-            NSString("S").draw(at: NSPoint(x: 0, y: topBarY - 1.5), withAttributes: outlineAttrs)
-            NSString("S").draw(at: NSPoint(x: 0, y: topBarY - 1.5), withAttributes: labelAttrs)
-            NSString("W").draw(at: NSPoint(x: 0, y: bottomBarY - 1.5), withAttributes: outlineAttrs)
-            NSString("W").draw(at: NSPoint(x: 0, y: bottomBarY - 1.5), withAttributes: labelAttrs)
+            NSString("S").draw(at: NSPoint(x: 0, y: topBarY - 4.5), withAttributes: outlineAttrs)
+            NSString("S").draw(at: NSPoint(x: 0, y: topBarY - 4.5), withAttributes: labelAttrs)
+            NSString("W").draw(at: NSPoint(x: 0, y: bottomBarY - 4.5), withAttributes: outlineAttrs)
+            NSString("W").draw(at: NSPoint(x: 0, y: bottomBarY - 4.5), withAttributes: labelAttrs)
 
             let barX = labelWidth + 2
 
