@@ -44,21 +44,37 @@ struct SettingsView: View {
 
                 // General
                 SectionLabel(text: "General")
-                Toggle("Launch at login", isOn: $launchAtLogin)
-                    .font(.system(size: 11))
-                    .foregroundColor(Color(white: 0.85))
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-                    .onChange(of: launchAtLogin) { _, newValue in
-                        settings.launchAtLogin = newValue
+                HStack {
+                    Text("Launch at login")
+                        .font(.system(size: 11))
+                        .foregroundColor(Color(white: 0.85))
+                    Spacer()
+                    Button(action: {
+                        launchAtLogin.toggle()
+                        settings.launchAtLogin = launchAtLogin
                         if #available(macOS 13.0, *) {
-                            try? newValue ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
+                            try? launchAtLogin ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
                         }
+                    }) {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(launchAtLogin ? Color(red: 74/255, green: 222/255, blue: 128/255) : Color(white: 0.2))
+                            .frame(width: 36, height: 20)
+                            .overlay(
+                                Circle()
+                                    .fill(.white)
+                                    .frame(width: 16, height: 16)
+                                    .offset(x: launchAtLogin ? 8 : -8),
+                                alignment: .center
+                            )
+                            .animation(.easeInOut(duration: 0.15), value: launchAtLogin)
                     }
+                    .buttonStyle(.plain)
+                }
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
         }
+        .frame(maxHeight: .infinity, alignment: .top)
         .onAppear {
             greenThreshold = "\(settings.thresholdGreen)"
             yellowThreshold = "\(settings.thresholdYellow)"
