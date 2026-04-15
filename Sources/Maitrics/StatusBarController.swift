@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import Observation
 import MaitricsCore
 
 final class StatusBarController {
@@ -19,6 +20,20 @@ final class StatusBarController {
         setupFileWatcher()
         dataManager.refresh()
         updateStatusText()
+        observeDataChanges()
+    }
+
+    /// Re-registers on every change so the status bar stays in sync with async refreshes
+    private func observeDataChanges() {
+        withObservationTracking {
+            _ = dataManager.usageData
+            _ = dataManager.lastRefresh
+        } onChange: {
+            DispatchQueue.main.async { [weak self] in
+                self?.updateStatusText()
+                self?.observeDataChanges()
+            }
+        }
     }
 
     private func setupStatusItem() {
