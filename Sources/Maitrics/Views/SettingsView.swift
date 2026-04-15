@@ -110,40 +110,10 @@ struct SettingsView: View {
             } else {
                 HStack(spacing: 6) {
                     Circle().fill(Color(red: 255/255, green: 85/255, blue: 85/255)).frame(width: 6, height: 6)
-                    Text("Not connected")
+                    Text("Not connected — Claude Code CLI required")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(Color(white: 0.85))
                 }
-                Text("Install Claude Code CLI and sign in to connect. Maitrics reads your OAuth token automatically.")
-                    .font(.system(size: 10))
-                    .foregroundColor(Color(white: 0.55))
-                    .fixedSize(horizontal: false, vertical: true)
-
-                HStack(spacing: 8) {
-                    Text("1. Install:")
-                        .foregroundColor(Color(white: 0.6))
-                    Text("brew install claude-code")
-                        .foregroundColor(Color(white: 0.8))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.white.opacity(0.06))
-                        .cornerRadius(3)
-                }
-                .font(.system(size: 9, design: .monospaced))
-
-                HStack(spacing: 8) {
-                    Text("2. Login: ")
-                        .foregroundColor(Color(white: 0.6))
-                    Text("claude")
-                        .foregroundColor(Color(white: 0.8))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.white.opacity(0.06))
-                        .cornerRadius(3)
-                    Text("(follow OAuth prompt)")
-                        .foregroundColor(Color(white: 0.5))
-                }
-                .font(.system(size: 9, design: .monospaced))
             }
         }
     }
