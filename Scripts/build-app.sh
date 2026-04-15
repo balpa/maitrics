@@ -24,6 +24,7 @@ mkdir -p "$APP_DIR/Resources"
 cp "$BIN_PATH" "$APP_DIR/MacOS/$APP_NAME"
 cp "$ROOT_DIR/Resources/Info.plist" "$APP_DIR/Info.plist"
 cp "$ROOT_DIR/Resources/Maitrics.entitlements" "$APP_DIR/Resources/"
+cp "$ROOT_DIR/Resources/AppIcon.icns" "$APP_DIR/Resources/"
 
 # Ad-hoc code sign (for local/DMG distribution)
 codesign --force --sign - --entitlements "$ROOT_DIR/Resources/Maitrics.entitlements" "$ROOT_DIR/dist/$APP_NAME.app" 2>/dev/null || true
