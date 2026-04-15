@@ -82,8 +82,8 @@ struct UsageTrendChartView: View {
                     Text("All").tag(2)
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 120)
-                .scaleEffect(0.85)
+                .frame(width: 110)
+                .scaleEffect(0.8)
             }
 
             if displayData.isEmpty {
@@ -117,7 +117,7 @@ struct UsageTrendChartView: View {
                     }
                 }
                 .chartYAxis {
-                    AxisMarks { value in
+                    AxisMarks(position: .leading) { value in
                         AxisValueLabel {
                             if let intVal = value.as(Int.self) {
                                 Text(Formatting.tokens(intVal))
@@ -148,7 +148,7 @@ struct UsageTrendChartView: View {
                 .frame(height: 100)
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 16)
         .padding(.vertical, 14)
     }
 

@@ -47,7 +47,7 @@ final class StatusBarController {
 
     private func setupPopover() {
         popover = NSPopover()
-        popover.contentSize = NSSize(width: 420, height: 580)
+        popover.contentSize = NSSize(width: 400, height: 700)
         popover.behavior = .transient
         popover.animates = true
         let hostingController = NSHostingController(
@@ -183,7 +183,10 @@ final class StatusBarController {
             dataManager.refresh()
             updateStatusText()
             if let button = statusItem.button {
-                popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+                // Shift anchor leftward so the popover doesn't clip at the right screen edge
+                var rect = button.bounds
+                rect.origin.x -= 60
+                popover.show(relativeTo: rect, of: button, preferredEdge: .minY)
             }
             eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
                 self?.closePopover()
