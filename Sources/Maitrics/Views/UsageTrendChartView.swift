@@ -163,9 +163,14 @@ struct UsageTrendChartView: View {
                             .contentShape(Rectangle())
                             .onContinuousHover { phase in
                                 switch phase {
-                                case .active(let location):
-                                    if let date: Date = proxy.value(atX: location.x) {
-                                        hoveredDate = date
+                                case .active(let hoverLocation):
+                                    // Subtract plot area origin to account for y-axis label offset
+                                    if let plotFrame = proxy.plotFrame {
+                                        let origin = geo[plotFrame].origin
+                                        let plotX = hoverLocation.x - origin.x
+                                        if let date: Date = proxy.value(atX: plotX) {
+                                            hoveredDate = date
+                                        }
                                     }
                                 case .ended:
                                     hoveredDate = nil
