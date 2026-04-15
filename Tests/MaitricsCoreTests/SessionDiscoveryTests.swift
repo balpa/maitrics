@@ -157,7 +157,10 @@ final class SessionDiscoveryTests: XCTestCase {
         XCTAssertEqual(sessions[0].messageCount, 0)
         XCTAssertNil(sessions[0].gitBranch)
         XCTAssertEqual(sessions[0].projectName, "jsonl-project")
-        XCTAssertEqual(sessions[0].jsonlPath, jsonlFile.path)
+        XCTAssertEqual(
+            sessions[0].jsonlPath.map { ($0 as NSString).resolvingSymlinksInPath },
+            (jsonlFile.path as NSString).resolvingSymlinksInPath
+        )
     }
 
     func testDiscoverSessionsEmptyDirectory() throws {

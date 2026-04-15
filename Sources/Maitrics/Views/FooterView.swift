@@ -4,6 +4,7 @@ import MaitricsCore
 struct FooterView: View {
     let lastRefresh: Date?
     let isWatching: Bool
+
     var body: some View {
         HStack {
             HStack(spacing: 4) {
@@ -14,14 +15,29 @@ struct FooterView: View {
                     .font(.system(size: 9))
                     .foregroundColor(Color(white: 0.3))
             }
+
             Spacer()
+
             Text("Last: \(lastRefreshText)")
                 .font(.system(size: 9))
                 .foregroundColor(Color(white: 0.3))
+
+            Text("·")
+                .font(.system(size: 9))
+                .foregroundColor(Color(white: 0.2))
+                .padding(.horizontal, 2)
+
+            Button("Quit") {
+                NSApplication.shared.terminate(nil)
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 9))
+            .foregroundColor(Color(white: 0.4))
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 10)
     }
+
     private var lastRefreshText: String {
         guard let lastRefresh else { return "never" }
         let seconds = Date().timeIntervalSince(lastRefresh)

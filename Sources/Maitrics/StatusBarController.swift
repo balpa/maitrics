@@ -36,13 +36,15 @@ final class StatusBarController {
         popover.contentSize = NSSize(width: 420, height: 580)
         popover.behavior = .transient
         popover.animates = true
-        popover.contentViewController = NSHostingController(
+        let hostingController = NSHostingController(
             rootView: PopoverContentView(
                 dataManager: dataManager,
                 settings: settings,
                 onSettingsOpen: { [weak self] in self?.openSettings() }
             )
+            .preferredColorScheme(.dark)
         )
+        popover.contentViewController = hostingController
     }
 
     private func setupFileWatcher() {
@@ -106,6 +108,7 @@ final class StatusBarController {
         )
         settingsWindow?.title = "Maitrics Settings"
         settingsWindow?.center()
+        settingsWindow?.appearance = NSAppearance(named: .darkAqua)
         settingsWindow?.contentViewController = NSHostingController(rootView: SettingsView(settings: settings))
         settingsWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
