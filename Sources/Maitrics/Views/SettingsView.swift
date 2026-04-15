@@ -7,8 +7,8 @@ struct SettingsView: View {
     @State private var greenThreshold: String = ""
     @State private var yellowThreshold: String = ""
     @State private var launchAtLogin: Bool = false
-    @State private var saved = false
     @State private var pricingRefreshing = false
+    @State private var debounceTask: Task<Void, Never>?
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -31,6 +31,8 @@ struct SettingsView: View {
                             .foregroundColor(Color(white: 0.55))
                     }
                 }
+                .onChange(of: greenThreshold) { _, _ in debounceSaveThresholds() }
+                .onChange(of: yellowThreshold) { _, _ in debounceSaveThresholds() }
 
                 Divider().opacity(0.1)
 
@@ -53,31 +55,6 @@ struct SettingsView: View {
                             try? newValue ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
                         }
                     }
-
-                // Save thresholds
-                HStack {
-                    Spacer()
-                    if saved {
-                        Text("Saved")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(Color(red: 74/255, green: 222/255, blue: 128/255))
-                    }
-                    Button("Save Thresholds") {
-                        settings.thresholdGreen = Int(greenThreshold) ?? 100_000
-                        settings.thresholdYellow = Int(yellowThreshold) ?? 500_000
-                        withAnimation { saved = true }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                            withAnimation { saved = false }
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
-                    .background(Color.blue.opacity(0.6))
-                    .cornerRadius(4)
-                }
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
@@ -86,6 +63,16 @@ struct SettingsView: View {
             greenThreshold = "\(settings.thresholdGreen)"
             yellowThreshold = "\(settings.thresholdYellow)"
             launchAtLogin = settings.launchAtLogin
+        }
+    }
+
+    private func debounceSaveThresholds() {
+        debounceTask?.cancel()
+        debounceTask = Task {
+            try? await Task.sleep(nanoseconds: 500_000_000) // 500ms
+            guard !Task.isCancelled else { return }
+            settings.thresholdGreen = Int(greenThreshold) ?? 100_000
+            settings.thresholdYellow = Int(yellowThreshold) ?? 500_000
         }
     }
 
