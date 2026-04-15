@@ -6,26 +6,19 @@ struct SettingsView: View {
     let settings: AppSettings
     @State private var greenThreshold: String = ""
     @State private var yellowThreshold: String = ""
-    @State private var claudePath: String = ""
     @State private var launchAtLogin: Bool = false
     @State private var saved = false
-
-    @State private var opusInput: String = ""
-    @State private var opusOutput: String = ""
-    @State private var opusCacheRead: String = ""
-    @State private var opusCacheWrite: String = ""
-    @State private var sonnetInput: String = ""
-    @State private var sonnetOutput: String = ""
-    @State private var sonnetCacheRead: String = ""
-    @State private var sonnetCacheWrite: String = ""
-    @State private var haikuInput: String = ""
-    @State private var haikuOutput: String = ""
-    @State private var haikuCacheRead: String = ""
-    @State private var haikuCacheWrite: String = ""
+    @State private var pricingRefreshing = false
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 20) {
+                // Connection status
+                SectionLabel(text: "Connection")
+                connectionStatus
+
+                Divider().opacity(0.1)
+
                 // Thresholds
                 SectionLabel(text: "Icon Thresholds")
                 VStack(alignment: .leading, spacing: 8) {
@@ -41,70 +34,37 @@ struct SettingsView: View {
 
                 Divider().opacity(0.1)
 
-                // Pricing
-                SectionLabel(text: "Model Pricing (per 1M tokens)")
-                VStack(alignment: .leading, spacing: 10) {
-                    pricingRow(model: "Opus", input: $opusInput, output: $opusOutput, cacheR: $opusCacheRead, cacheW: $opusCacheWrite)
-                    pricingRow(model: "Sonnet", input: $sonnetInput, output: $sonnetOutput, cacheR: $sonnetCacheRead, cacheW: $sonnetCacheWrite)
-                    pricingRow(model: "Haiku", input: $haikuInput, output: $haikuOutput, cacheR: $haikuCacheRead, cacheW: $haikuCacheWrite)
-
-                    HStack {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 8))
-                        if let version = PricingUpdater.lastUpdateDate {
-                            Text("Auto-updated: \(version)")
-                        } else {
-                            Text("Using built-in defaults")
-                        }
-                        Spacer()
-                        Text("Checks daily from GitHub")
-                    }
-                    .font(.system(size: 9))
-                    .foregroundColor(Color(white: 0.5))
-                }
+                // Pricing (read-only)
+                SectionLabel(text: "Model Pricing")
+                pricingDisplay
 
                 Divider().opacity(0.1)
 
                 // General
                 SectionLabel(text: "General")
-                VStack(alignment: .leading, spacing: 8) {
-                    Toggle("Launch at login", isOn: $launchAtLogin)
-                        .font(.system(size: 11))
-                        .foregroundColor(Color(white: 0.85))
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-
-                    HStack(spacing: 8) {
-                        Text("Data path")
-                            .font(.system(size: 10))
-                            .foregroundColor(Color(white: 0.6))
-                        TextField("~/.claude", text: $claudePath)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 10))
-                            .padding(4)
-                            .background(Color.white.opacity(0.06))
-                            .cornerRadius(4)
+                Toggle("Launch at login", isOn: $launchAtLogin)
+                    .font(.system(size: 11))
+                    .foregroundColor(Color(white: 0.85))
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .onChange(of: launchAtLogin) { _, newValue in
+                        settings.launchAtLogin = newValue
+                        if #available(macOS 13.0, *) {
+                            try? newValue ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
+                        }
                     }
-                }
 
-                // Actions
+                // Save thresholds
                 HStack {
-                    Button("Reset") { loadDefaults() }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 10))
-                        .foregroundColor(Color(white: 0.55))
-
                     Spacer()
-
                     if saved {
                         Text("Saved")
                             .font(.system(size: 10, weight: .medium))
                             .foregroundColor(Color(red: 74/255, green: 222/255, blue: 128/255))
-                            .transition(.opacity)
                     }
-
-                    Button("Save") {
-                        save()
+                    Button("Save Thresholds") {
+                        settings.thresholdGreen = Int(greenThreshold) ?? 100_000
+                        settings.thresholdYellow = Int(yellowThreshold) ?? 500_000
                         withAnimation { saved = true }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                             withAnimation { saved = false }
@@ -122,7 +82,135 @@ struct SettingsView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
         }
-        .onAppear { loadCurrent() }
+        .onAppear {
+            greenThreshold = "\(settings.thresholdGreen)"
+            yellowThreshold = "\(settings.thresholdYellow)"
+            launchAtLogin = settings.launchAtLogin
+        }
+    }
+
+    private var connectionStatus: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if UsageAPIClient.hasToken {
+                HStack(spacing: 6) {
+                    Circle().fill(Color(red: 74/255, green: 222/255, blue: 128/255)).frame(width: 6, height: 6)
+                    Text("Connected via Claude Code")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(Color(white: 0.85))
+                }
+                if let error = UsageAPIClient.lastError {
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 9))
+                        Text(errorMessage(error))
+                    }
+                    .font(.system(size: 9))
+                    .foregroundColor(Color(red: 255/255, green: 176/255, blue: 85/255))
+                }
+            } else {
+                HStack(spacing: 6) {
+                    Circle().fill(Color(red: 255/255, green: 85/255, blue: 85/255)).frame(width: 6, height: 6)
+                    Text("Not connected")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(Color(white: 0.85))
+                }
+                Text("Install Claude Code CLI and sign in to connect. Maitrics reads your OAuth token automatically.")
+                    .font(.system(size: 10))
+                    .foregroundColor(Color(white: 0.55))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 8) {
+                    Text("1. Install:")
+                        .foregroundColor(Color(white: 0.6))
+                    Text("brew install claude-code")
+                        .foregroundColor(Color(white: 0.8))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.white.opacity(0.06))
+                        .cornerRadius(3)
+                }
+                .font(.system(size: 9, design: .monospaced))
+
+                HStack(spacing: 8) {
+                    Text("2. Login: ")
+                        .foregroundColor(Color(white: 0.6))
+                    Text("claude")
+                        .foregroundColor(Color(white: 0.8))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.white.opacity(0.06))
+                        .cornerRadius(3)
+                    Text("(follow OAuth prompt)")
+                        .foregroundColor(Color(white: 0.5))
+                }
+                .font(.system(size: 9, design: .monospaced))
+            }
+        }
+    }
+
+    private var pricingDisplay: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            let pricing = PricingUpdater.effectivePricing
+
+            ForEach(["opus", "sonnet", "haiku"], id: \.self) { model in
+                if let tier = pricing[model] {
+                    HStack {
+                        Text(model.capitalized)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(Color(white: 0.85))
+                            .frame(width: 50, alignment: .leading)
+                        Group {
+                            label("In", value: tier.inputPer1M)
+                            label("Out", value: tier.outputPer1M)
+                            label("C.R", value: tier.cacheReadPer1M)
+                            label("C.W", value: tier.cacheWritePer1M)
+                        }
+                    }
+                }
+            }
+
+            HStack {
+                if let version = PricingUpdater.lastUpdateDate {
+                    Text("Updated: \(version)")
+                } else {
+                    Text("Using built-in defaults")
+                }
+                Spacer()
+                Button(action: {
+                    pricingRefreshing = true
+                    Task {
+                        // Force a fresh check by clearing the cache
+                        try? FileManager.default.removeItem(atPath: NSHomeDirectory() + "/.claude/maitrics-pricing-cache.json")
+                        await PricingUpdater.checkForUpdates(settings: settings)
+                        await MainActor.run { pricingRefreshing = false }
+                    }
+                }) {
+                    HStack(spacing: 3) {
+                        Image(systemName: pricingRefreshing ? "arrow.clockwise" : "arrow.clockwise")
+                            .rotationEffect(pricingRefreshing ? .degrees(360) : .degrees(0))
+                        Text("Refresh")
+                    }
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 9))
+                .foregroundColor(Color(white: 0.6))
+                .disabled(pricingRefreshing)
+            }
+            .font(.system(size: 9))
+            .foregroundColor(Color(white: 0.5))
+        }
+    }
+
+    private func label(_ name: String, value: Double) -> some View {
+        VStack(spacing: 1) {
+            Text(name)
+                .font(.system(size: 7))
+                .foregroundColor(Color(white: 0.5))
+            Text("$\(value, specifier: value < 1 ? "%.2f" : "%.0f")")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundColor(Color(white: 0.7))
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private func settingsRow(color: Color, label: String, text: Binding<String>) -> some View {
@@ -144,81 +232,17 @@ struct SettingsView: View {
         }
     }
 
-    private func pricingRow(model: String, input: Binding<String>, output: Binding<String>, cacheR: Binding<String>, cacheW: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(model)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(Color(white: 0.85))
-            HStack(spacing: 4) {
-                pricingField("In", value: input)
-                pricingField("Out", value: output)
-                pricingField("C.Read", value: cacheR)
-                pricingField("C.Write", value: cacheW)
-            }
-        }
-    }
-
-    private func pricingField(_ label: String, value: Binding<String>) -> some View {
-        VStack(spacing: 2) {
-            Text(label)
-                .font(.system(size: 8))
-                .foregroundColor(Color(white: 0.5))
-            TextField("0", text: value)
-                .textFieldStyle(.plain)
-                .font(.system(size: 10, design: .monospaced))
-                .padding(3)
-                .background(Color.white.opacity(0.06))
-                .cornerRadius(3)
-                .frame(maxWidth: .infinity)
-        }
-    }
-
-    private func loadCurrent() {
-        greenThreshold = "\(settings.thresholdGreen)"
-        yellowThreshold = "\(settings.thresholdYellow)"
-        claudePath = settings.claudeDataPath
-        launchAtLogin = settings.launchAtLogin
-        let pricing = settings.customPricing ?? [:]
-        let opus = pricing["opus"] ?? CostCalculator.defaultPricing["opus"]!
-        let sonnet = pricing["sonnet"] ?? CostCalculator.defaultPricing["sonnet"]!
-        let haiku = pricing["haiku"] ?? CostCalculator.defaultPricing["haiku"]!
-        opusInput = "\(opus.inputPer1M)"; opusOutput = "\(opus.outputPer1M)"
-        opusCacheRead = "\(opus.cacheReadPer1M)"; opusCacheWrite = "\(opus.cacheWritePer1M)"
-        sonnetInput = "\(sonnet.inputPer1M)"; sonnetOutput = "\(sonnet.outputPer1M)"
-        sonnetCacheRead = "\(sonnet.cacheReadPer1M)"; sonnetCacheWrite = "\(sonnet.cacheWritePer1M)"
-        haikuInput = "\(haiku.inputPer1M)"; haikuOutput = "\(haiku.outputPer1M)"
-        haikuCacheRead = "\(haiku.cacheReadPer1M)"; haikuCacheWrite = "\(haiku.cacheWritePer1M)"
-    }
-
-    private func loadDefaults() {
-        greenThreshold = "100000"; yellowThreshold = "500000"
-        claudePath = NSHomeDirectory() + "/.claude"
-        let opus = CostCalculator.defaultPricing["opus"]!
-        let sonnet = CostCalculator.defaultPricing["sonnet"]!
-        let haiku = CostCalculator.defaultPricing["haiku"]!
-        opusInput = "\(opus.inputPer1M)"; opusOutput = "\(opus.outputPer1M)"
-        opusCacheRead = "\(opus.cacheReadPer1M)"; opusCacheWrite = "\(opus.cacheWritePer1M)"
-        sonnetInput = "\(sonnet.inputPer1M)"; sonnetOutput = "\(sonnet.outputPer1M)"
-        sonnetCacheRead = "\(sonnet.cacheReadPer1M)"; sonnetCacheWrite = "\(sonnet.cacheWritePer1M)"
-        haikuInput = "\(haiku.inputPer1M)"; haikuOutput = "\(haiku.outputPer1M)"
-        haikuCacheRead = "\(haiku.cacheReadPer1M)"; haikuCacheWrite = "\(haiku.cacheWritePer1M)"
-    }
-
-    private func save() {
-        settings.thresholdGreen = Int(greenThreshold) ?? 100_000
-        settings.thresholdYellow = Int(yellowThreshold) ?? 500_000
-        settings.claudeDataPath = claudePath
-        settings.launchAtLogin = launchAtLogin
-        settings.customPricing = [
-            "opus": PricingTier(inputPer1M: Double(opusInput) ?? 15, outputPer1M: Double(opusOutput) ?? 75, cacheReadPer1M: Double(opusCacheRead) ?? 1.5, cacheWritePer1M: Double(opusCacheWrite) ?? 18.75),
-            "sonnet": PricingTier(inputPer1M: Double(sonnetInput) ?? 3, outputPer1M: Double(sonnetOutput) ?? 15, cacheReadPer1M: Double(sonnetCacheRead) ?? 0.3, cacheWritePer1M: Double(sonnetCacheWrite) ?? 3.75),
-            "haiku": PricingTier(inputPer1M: Double(haikuInput) ?? 0.8, outputPer1M: Double(haikuOutput) ?? 4, cacheReadPer1M: Double(haikuCacheRead) ?? 0.08, cacheWritePer1M: Double(haikuCacheWrite) ?? 1.0),
-        ]
-        if #available(macOS 13.0, *) {
-            do {
-                if launchAtLogin { try SMAppService.mainApp.register() }
-                else { try SMAppService.mainApp.unregister() }
-            } catch {}
+    private func errorMessage(_ error: UsageAPIClient.APIError) -> String {
+        switch error {
+        case .rateLimited(let retryAfter):
+            if let seconds = retryAfter { return "Rate limited. Retry in \(seconds)s" }
+            return "Rate limited. Try again later"
+        case .unauthorized:
+            return "Token expired. Re-login to Claude Code"
+        case .serverError(let code):
+            return "API error (\(code))"
+        case .networkError(let msg):
+            return "Network: \(msg)"
         }
     }
 }

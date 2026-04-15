@@ -77,6 +77,16 @@ public enum UsageAPIClient {
 
     // MARK: - HTTP
 
+    public enum APIError: Error, Sendable {
+        case rateLimited(retryAfter: Int?)
+        case unauthorized
+        case serverError(Int)
+        case networkError(String)
+    }
+
+    /// Last API error for UI display
+    public static var lastError: APIError?
+
     private static func apiRequest(url: URL, token: String) async throws -> Data {
         var request = URLRequest(url: url)
         request.timeoutInterval = 5
@@ -87,10 +97,30 @@ public enum UsageAPIClient {
         request.setValue("maitrics/0.1.0", forHTTPHeaderField: "User-Agent")
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw URLError(.badServerResponse)
+        guard let http = response as? HTTPURLResponse else {
+            throw APIError.networkError("No response")
         }
-        return data
+
+        switch http.statusCode {
+        case 200:
+            lastError = nil
+            return data
+        case 401:
+            lastError = .unauthorized
+            throw APIError.unauthorized
+        case 429:
+            let retryAfter = http.value(forHTTPHeaderField: "Retry-After").flatMap(Int.init)
+            lastError = .rateLimited(retryAfter: retryAfter)
+            throw APIError.rateLimited(retryAfter: retryAfter)
+        default:
+            lastError = .serverError(http.statusCode)
+            throw APIError.serverError(http.statusCode)
+        }
+    }
+
+    /// Whether a valid OAuth token exists (for UI to show connect state)
+    public static var hasToken: Bool {
+        resolveOAuthToken() != nil
     }
 
     // MARK: - OAuth Token Resolution (via `security` CLI — no keychain prompt)

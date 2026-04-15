@@ -10,6 +10,8 @@ public final class ClaudeDataManager {
     public private(set) var lastRefresh: Date?
     public private(set) var isLoading = false
     public private(set) var error: String?
+    public var hasToken: Bool { UsageAPIClient.hasToken }
+    public var apiError: UsageAPIClient.APIError? { UsageAPIClient.lastError }
 
     private let settings: AppSettings
     private var sessionTokenCache: [String: (mtime: Date, usage: SessionTokenUsage)] = [:]
