@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 APP_NAME="Maitrics"
 VERSION="${1:-0.1.0}"
+VOL_NAME="$APP_NAME"
 
 echo "Building release..."
 "$SCRIPT_DIR/build-app.sh" release
@@ -20,64 +21,80 @@ if [ ! -d "$APP_PATH" ]; then
     exit 1
 fi
 
+# Eject any existing volume with the same name
+hdiutil detach "/Volumes/$VOL_NAME" 2>/dev/null || true
+sleep 1
+
 echo "Creating DMG..."
 rm -rf "$STAGING_DIR"
 mkdir -p "$STAGING_DIR"
-
 cp -R "$APP_PATH" "$STAGING_DIR/"
 ln -s /Applications "$STAGING_DIR/Applications"
 
-# Create a read-write DMG first so we can set Finder view options
+# Create read-write DMG
 rm -f "$TMP_DMG" "$DMG_PATH"
 hdiutil create \
-    -volname "$APP_NAME" \
+    -volname "$VOL_NAME" \
     -srcfolder "$STAGING_DIR" \
     -ov \
     -format UDRW \
+    -size 10m \
     "$TMP_DMG"
 
-# Mount it and configure the Finder window
-MOUNT_DIR=$(hdiutil attach -readwrite -noverify "$TMP_DMG" | grep "/Volumes/" | sed 's/.*\/Volumes/\/Volumes/')
-echo "Mounted at: $MOUNT_DIR"
+# Mount read-write
+DEVICE=$(hdiutil attach -readwrite -noverify -noautoopen "$TMP_DMG" | grep "Apple_APFS\|Apple_HFS" | head -1 | awk '{print $1}')
+echo "Mounted device: $DEVICE"
+sleep 2
 
-# Set Finder window properties via AppleScript
-osascript <<APPLESCRIPT
+# Set Finder view options via AppleScript
+echo "Setting Finder window layout..."
+osascript <<EOF
 tell application "Finder"
-    tell disk "$APP_NAME"
+    tell disk "$VOL_NAME"
         open
+        delay 1
         set current view of container window to icon view
         set toolbar visible of container window to false
         set statusbar visible of container window to false
-        set bounds of container window to {200, 200, 720, 480}
+        set bounds of container window to {200, 120, 740, 440}
         set theViewOptions to the icon view options of container window
         set arrangement of theViewOptions to not arranged
-        set icon size of theViewOptions to 96
-        set background color of theViewOptions to {14906, 14906, 14906}
-        set position of item "$APP_NAME.app" of container window to {140, 130}
-        set position of item "Applications" of container window to {380, 130}
-        close
-        open
+        set icon size of theViewOptions to 100
+        set position of item "$APP_NAME.app" of container window to {130, 150}
+        set position of item "Applications" of container window to {400, 150}
         update without registering applications
         delay 1
         close
     end tell
 end tell
-APPLESCRIPT
+EOF
 
-# Set the volume icon
+# Set volume icon
 if [ -f "$ROOT_DIR/Resources/AppIcon.icns" ]; then
-    cp "$ROOT_DIR/Resources/AppIcon.icns" "$MOUNT_DIR/.VolumeIcon.icns"
-    SetFile -c icnC "$MOUNT_DIR/.VolumeIcon.icns" 2>/dev/null || true
-    SetFile -a C "$MOUNT_DIR" 2>/dev/null || true
+    cp "$ROOT_DIR/Resources/AppIcon.icns" "/Volumes/$VOL_NAME/.VolumeIcon.icns"
+    SetFile -c icnC "/Volumes/$VOL_NAME/.VolumeIcon.icns" 2>/dev/null || true
+    SetFile -a C "/Volumes/$VOL_NAME" 2>/dev/null || true
 fi
 
+# Make sure .DS_Store is flushed
 sync
-hdiutil detach "$MOUNT_DIR"
+sleep 2
+
+# Verify DS_Store was created
+if [ -f "/Volumes/$VOL_NAME/.DS_Store" ]; then
+    echo "DS_Store created successfully"
+else
+    echo "Warning: DS_Store not found, Finder window may not auto-open"
+fi
+
+hdiutil detach "$DEVICE"
+sleep 1
 
 # Convert to compressed read-only DMG
 hdiutil convert "$TMP_DMG" -format UDZO -o "$DMG_PATH"
 rm -f "$TMP_DMG"
 rm -rf "$STAGING_DIR"
 
+echo ""
 echo "Created: $DMG_PATH"
 echo "Size: $(du -h "$DMG_PATH" | cut -f1)"
