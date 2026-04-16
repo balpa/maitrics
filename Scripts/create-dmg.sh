@@ -11,7 +11,7 @@ echo "Building release..."
 "$SCRIPT_DIR/build-app.sh" release
 
 APP_PATH="$ROOT_DIR/dist/$APP_NAME.app"
-DMG_NAME="$APP_NAME-$VERSION.dmg"
+DMG_NAME="$APP_NAME.dmg"
 DMG_PATH="$ROOT_DIR/dist/$DMG_NAME"
 STAGING_DIR="$ROOT_DIR/dist/dmg-staging"
 TMP_DMG="$ROOT_DIR/dist/tmp-$APP_NAME.dmg"

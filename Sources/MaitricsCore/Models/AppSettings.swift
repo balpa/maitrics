@@ -47,5 +47,11 @@ public final class AppSettings: @unchecked Sendable {
         set { defaults.set(newValue, forKey: "launchAtLogin") }
     }
 
-    private var defaultClaudePath: String { NSHomeDirectory() + "/.claude" }
+    private var defaultClaudePath: String {
+        // Use getpwuid to get the real home directory (NSHomeDirectory returns sandbox container when sandboxed)
+        if let pw = getpwuid(getuid()), let home = pw.pointee.pw_dir {
+            return String(cString: home) + "/.claude"
+        }
+        return NSHomeDirectory() + "/.claude"
+    }
 }
