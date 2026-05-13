@@ -10,13 +10,14 @@ struct PopoverContentView: View {
         ZStack {
             VisualEffectBackground()
 
-            if dataManager.statsCache == nil && dataManager.usageData == nil && !dataManager.isLoading {
+            if dataManager.statsCache == nil && dataManager.recentSessions.isEmpty && !dataManager.isLoading {
                 EmptyStateView()
             } else if showSettings {
                 VStack(spacing: 0) {
                     HeaderView(
                         profileData: dataManager.profileData,
                         showSettings: true,
+                        isLoading: dataManager.isLoading,
                         onToggleSettings: { showSettings = false }
                     )
                     Divider().opacity(0.06)
@@ -28,6 +29,7 @@ struct PopoverContentView: View {
                         HeaderView(
                             profileData: dataManager.profileData,
                             showSettings: false,
+                            isLoading: dataManager.isLoading,
                             onToggleSettings: { showSettings = true }
                         )
                         Divider().opacity(0.06)

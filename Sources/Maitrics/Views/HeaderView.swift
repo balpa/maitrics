@@ -4,15 +4,24 @@ import MaitricsCore
 struct HeaderView: View {
     let profileData: ProfileData?
     let showSettings: Bool
+    let isLoading: Bool
     var onToggleSettings: () -> Void
 
     var body: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("MAITRICS")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.white)
-                    .tracking(0.5)
+                HStack(spacing: 6) {
+                    Text("MAITRICS")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white)
+                        .tracking(0.5)
+                    if isLoading {
+                        SpinnerView()
+                            .frame(width: 14, height: 14)
+                            .transition(.opacity)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.18), value: isLoading)
 
                 if let profile = profileData {
                     HStack(spacing: 6) {
@@ -39,6 +48,21 @@ struct HeaderView: View {
         .padding(.horizontal, 20)
         .padding(.top, 16)
         .padding(.bottom, 12)
+    }
+
+    private struct SpinnerView: View {
+        @State private var rotation: Double = 0
+        var body: some View {
+            Circle()
+                .trim(from: 0.15, to: 0.85)
+                .stroke(Color.white, style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
+                .rotationEffect(.degrees(rotation))
+                .onAppear {
+                    withAnimation(.linear(duration: 0.8).repeatForever(autoreverses: false)) {
+                        rotation = 360
+                    }
+                }
+        }
     }
 
     private func planColor(_ planType: String) -> Color {

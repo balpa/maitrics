@@ -11,6 +11,16 @@ final class StatusBarController {
     let dataManager: ClaudeDataManager
     let settings: AppSettings
 
+    private var displayedSessionPct: Double = 0
+    private var displayedWeeklyPct: Double = 0
+    private var animationTimer: Timer?
+    private var animationStartTime: CFTimeInterval = 0
+    private var animationStartSession: Double = 0
+    private var animationStartWeekly: Double = 0
+    private var animationTargetSession: Double = 0
+    private var animationTargetWeekly: Double = 0
+    private let animationDuration: CFTimeInterval = 0.45
+
     init() {
         self.settings = AppSettings()
         self.dataManager = ClaudeDataManager(settings: settings)
@@ -71,20 +81,58 @@ final class StatusBarController {
         guard let button = statusItem.button else { return }
 
         if let usage = dataManager.usageData {
-            let sessionPct = usage.fiveHour.utilization
-            let weeklyPct = usage.sevenDay.utilization
-
-            let barImage = renderBarImage(sessionPct: sessionPct, weeklyPct: weeklyPct)
-            button.attributedTitle = NSAttributedString(string: "")
-            button.image = barImage
-            button.imagePosition = .imageOnly
+            animateBars(toSession: usage.fiveHour.utilization, toWeekly: usage.sevenDay.utilization)
         } else {
+            animationTimer?.invalidate()
+            animationTimer = nil
             button.attributedTitle = NSAttributedString(string: "")
             let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
             let image = NSImage(systemSymbolName: "gauge.with.dots.needle.33percent", accessibilityDescription: "Maitrics")?.withSymbolConfiguration(config)
             image?.isTemplate = true
             button.image = image
         }
+    }
+
+    private func animateBars(toSession session: Double, toWeekly weekly: Double) {
+        if abs(displayedSessionPct - session) < 0.05 && abs(displayedWeeklyPct - weekly) < 0.05 && animationTimer == nil {
+            renderStatusBar()
+            return
+        }
+
+        animationTimer?.invalidate()
+        animationStartSession = displayedSessionPct
+        animationStartWeekly = displayedWeeklyPct
+        animationTargetSession = session
+        animationTargetWeekly = weekly
+        animationStartTime = CACurrentMediaTime()
+
+        animationTimer = Timer.scheduledTimer(withTimeInterval: 1.0/60.0, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
+            let elapsed = CACurrentMediaTime() - self.animationStartTime
+            let progress = min(elapsed / self.animationDuration, 1.0)
+            let f = 1 - progress
+            let eased = 1 - f * f * f  // easeOutCubic
+
+            self.displayedSessionPct = self.animationStartSession + (self.animationTargetSession - self.animationStartSession) * eased
+            self.displayedWeeklyPct = self.animationStartWeekly + (self.animationTargetWeekly - self.animationStartWeekly) * eased
+            self.renderStatusBar()
+
+            if progress >= 1.0 {
+                self.displayedSessionPct = self.animationTargetSession
+                self.displayedWeeklyPct = self.animationTargetWeekly
+                self.renderStatusBar()
+                timer.invalidate()
+                self.animationTimer = nil
+            }
+        }
+    }
+
+    private func renderStatusBar() {
+        guard let button = statusItem.button else { return }
+        let image = renderBarImage(sessionPct: displayedSessionPct, weeklyPct: displayedWeeklyPct)
+        button.attributedTitle = NSAttributedString(string: "")
+        button.image = image
+        button.imagePosition = .imageOnly
     }
 
     private func renderBarImage(sessionPct: Double, weeklyPct: Double) -> NSImage {
