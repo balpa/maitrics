@@ -31,6 +31,9 @@ dist/
 *.dSYM.zip
 *.dSYM
 
+# Screenshots (existing README images stay tracked; new ones are ignored)
+screenshots/
+
 # Credentials / secrets (should never be committed)
 .credentials*
 *.pem

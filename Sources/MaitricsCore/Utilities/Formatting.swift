@@ -51,6 +51,8 @@ public enum Formatting {
 
     public static func shortModelName(_ modelId: String) -> String {
         let lower = modelId.lowercased()
+        if lower.contains("fable") { return "Fable" }
+        if lower.contains("mythos") { return "Mythos" }
         if lower.contains("opus") { return "Opus" }
         if lower.contains("sonnet") { return "Sonnet" }
         if lower.contains("haiku") { return "Haiku" }

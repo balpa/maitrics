@@ -178,7 +178,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 8) {
             let pricing = PricingUpdater.effectivePricing
 
-            ForEach(["opus", "sonnet", "haiku"], id: \.self) { model in
+            ForEach(["fable", "opus", "sonnet", "haiku"], id: \.self) { model in
                 if let tier = pricing[model] {
                     HStack {
                         Text(model.capitalized)
@@ -205,9 +205,7 @@ struct SettingsView: View {
                 Button(action: {
                     pricingRefreshing = true
                     Task {
-                        // Force a fresh check by clearing the cache
-                        try? FileManager.default.removeItem(atPath: NSHomeDirectory() + "/.claude/maitrics-pricing-cache.json")
-                        await PricingUpdater.checkForUpdates(settings: settings)
+                        await PricingUpdater.checkForUpdates(settings: settings, force: true)
                         await MainActor.run { pricingRefreshing = false }
                     }
                 }) {

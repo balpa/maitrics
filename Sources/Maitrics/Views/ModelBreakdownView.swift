@@ -37,6 +37,7 @@ struct ModelBreakdownView: View {
         case "orange": return [Color(red: 249/255, green: 115/255, blue: 22/255), Color(red: 251/255, green: 146/255, blue: 60/255)]
         case "blue": return [Color(red: 59/255, green: 130/255, blue: 246/255), Color(red: 96/255, green: 165/255, blue: 250/255)]
         case "purple": return [Color(red: 168/255, green: 85/255, blue: 247/255), Color(red: 192/255, green: 132/255, blue: 252/255)]
+        case "teal": return [Color(red: 20/255, green: 184/255, blue: 166/255), Color(red: 45/255, green: 212/255, blue: 191/255)]
         default: return [Color.gray, Color.gray.opacity(0.7)]
         }
     }

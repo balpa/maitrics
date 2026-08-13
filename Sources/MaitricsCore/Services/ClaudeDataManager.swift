@@ -63,6 +63,7 @@ public final class ClaudeDataManager {
         return grouped.filter { !$0.key.isEmpty && $0.value > 0 }.sorted { $0.value > $1.value }.map { family, tokens in
             let color: String
             switch family {
+            case "Fable", "Mythos": color = "teal"
             case "Opus": color = "orange"
             case "Haiku": color = "purple"
             default: color = "blue"
@@ -156,10 +157,11 @@ public final class ClaudeDataManager {
                 }
             }
 
-            // Fetch API data + check pricing updates
+            // Fetch API data + check pricing updates (pricing runs unawaited so
+            // a slow ~1.7MB price download never blocks the dashboard refresh)
             let newUsageData = await UsageAPIClient.fetchUsage()
             let newProfileData = await UsageAPIClient.fetchProfile()
-            await PricingUpdater.checkForUpdates(settings: settings)
+            Task { await PricingUpdater.checkForUpdates(settings: settings) }
 
             let finalStats = newStatsCache
             let finalSessions = newSessions

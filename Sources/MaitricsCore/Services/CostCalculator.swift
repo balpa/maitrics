@@ -16,22 +16,29 @@ public struct PricingTier: Codable, Sendable {
 
 public enum CostCalculator {
     public static let defaultPricing: [String: PricingTier] = [
-        "opus": PricingTier(inputPer1M: 15, outputPer1M: 75, cacheReadPer1M: 1.5, cacheWritePer1M: 18.75),
+        "fable": PricingTier(inputPer1M: 10, outputPer1M: 50, cacheReadPer1M: 1.0, cacheWritePer1M: 12.5),
+        "opus": PricingTier(inputPer1M: 5, outputPer1M: 25, cacheReadPer1M: 0.5, cacheWritePer1M: 6.25),
         "sonnet": PricingTier(inputPer1M: 3, outputPer1M: 15, cacheReadPer1M: 0.3, cacheWritePer1M: 3.75),
-        "haiku": PricingTier(inputPer1M: 0.8, outputPer1M: 4, cacheReadPer1M: 0.08, cacheWritePer1M: 1.0),
+        "haiku": PricingTier(inputPer1M: 1, outputPer1M: 5, cacheReadPer1M: 0.1, cacheWritePer1M: 1.25),
     ]
 
     public static func modelFamily(_ modelId: String) -> String {
         let lower = modelId.lowercased()
+        // Fable/Mythos share the same pricing tier
+        if lower.contains("fable") || lower.contains("mythos") { return "fable" }
         if lower.contains("opus") { return "opus" }
         if lower.contains("haiku") { return "haiku" }
         return "sonnet"
     }
 
     public static func pricing(for modelId: String, customPricing: [String: PricingTier]? = nil) -> PricingTier {
+        let key = modelId.lowercased()
         let family = modelFamily(modelId)
-        let effective = PricingUpdater.effectivePricing
-        return customPricing?[family] ?? effective[family] ?? defaultPricing[family] ?? defaultPricing["sonnet"]!
+        if let custom = customPricing?[key] ?? customPricing?[family] { return custom }
+        // Exact model match from the dynamically fetched table (handles legacy
+        // models like claude-opus-4-1 whose price differs from the family rate)
+        if let exact = PricingUpdater.modelPricing[key] { return exact }
+        return PricingUpdater.effectivePricing[family] ?? defaultPricing[family] ?? defaultPricing["sonnet"]!
     }
 
     public static func cost(for usage: ModelUsage, model: String, customPricing: [String: PricingTier]? = nil) -> Double {

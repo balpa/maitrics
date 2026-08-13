@@ -23,8 +23,21 @@ struct RateLimitsView: View {
                     resetsAt: usage.sevenDay.resetsAt
                 )
 
-                // Per-model quotas (if available)
-                if usage.sevenDayOpus != nil || usage.sevenDaySonnet != nil {
+                // Per-model quotas — newer API shape (`limits` array)
+                if !usage.modelLimits.isEmpty {
+                    Divider().opacity(0.06).padding(.vertical, 4)
+
+                    ForEach(usage.modelLimits, id: \.modelName) { limit in
+                        UsageBarRow(
+                            label: limit.modelName,
+                            sublabel: "weekly",
+                            percentage: limit.utilization,
+                            resetsAt: limit.resetsAt,
+                            barColors: modelBarColors(for: limit.modelName)
+                        )
+                    }
+                } else if usage.sevenDayOpus != nil || usage.sevenDaySonnet != nil {
+                    // Legacy fields (older API responses)
                     Divider().opacity(0.06).padding(.vertical, 4)
 
                     if let opus = usage.sevenDayOpus {
@@ -90,6 +103,23 @@ struct RateLimitsView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
+    }
+
+    private func modelBarColors(for name: String) -> (Color, Color)? {
+        let lower = name.lowercased()
+        let base: Color
+        if lower.contains("fable") || lower.contains("mythos") {
+            base = Color(red: 20/255, green: 184/255, blue: 166/255)
+        } else if lower.contains("opus") {
+            base = Color(red: 249/255, green: 115/255, blue: 22/255)
+        } else if lower.contains("sonnet") {
+            base = Color(red: 59/255, green: 130/255, blue: 246/255)
+        } else if lower.contains("haiku") {
+            base = Color(red: 168/255, green: 85/255, blue: 247/255)
+        } else {
+            return nil
+        }
+        return (base.opacity(0.8), base)
     }
 }
 

@@ -7,7 +7,17 @@ public struct UsageData: Sendable {
     public let sevenDay: UsageWindow
     public let sevenDaySonnet: UsageWindow?
     public let sevenDayOpus: UsageWindow?
+    public let modelLimits: [ModelLimit]
     public let extraUsage: ExtraUsage?
+}
+
+/// Model-scoped weekly limit from the newer `limits` array in the usage API
+/// (replaces the legacy `seven_day_opus` / `seven_day_sonnet` fields, which
+/// the API now returns as null).
+public struct ModelLimit: Sendable {
+    public let modelName: String
+    public let utilization: Double
+    public let resetsAt: Date?
 }
 
 public struct UsageWindow: Sendable {
@@ -211,6 +221,21 @@ public enum UsageAPIClient {
         return f
     }()
 
+    /// The API sends microsecond fractions (e.g. "…59.842378+00:00"), which
+    /// ISO8601DateFormatter rejects (it expects exactly 3 fractional digits).
+    private static let microsecondFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXXXX"
+        return f
+    }()
+
+    static func parseAPIDate(_ string: String) -> Date? {
+        isoFormatter.date(from: string)
+            ?? isoFormatterNoFrac.date(from: string)
+            ?? microsecondFormatter.date(from: string)
+    }
+
     private static func parseUsageResponse(_ data: Data) -> UsageData? {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let fiveHourJSON = json["five_hour"] as? [String: Any],
@@ -218,6 +243,22 @@ public enum UsageAPIClient {
 
         let sevenDaySonnet = (json["seven_day_sonnet"] as? [String: Any]).map { parseWindow($0) }
         let sevenDayOpus = (json["seven_day_opus"] as? [String: Any]).map { parseWindow($0) }
+
+        // Newer API shape: model-scoped weekly limits live in the `limits` array
+        var modelLimits: [ModelLimit] = []
+        if let limitsJSON = json["limits"] as? [[String: Any]] {
+            for limit in limitsJSON {
+                guard limit["kind"] as? String == "weekly_scoped",
+                      let scope = limit["scope"] as? [String: Any],
+                      let model = scope["model"] as? [String: Any] else { continue }
+                let name = (model["display_name"] as? String)
+                    ?? (model["id"] as? String)
+                    ?? "Model"
+                let percent = (limit["percent"] as? Double) ?? Double(limit["percent"] as? Int ?? 0)
+                let resetsAt = (limit["resets_at"] as? String).flatMap(parseAPIDate)
+                modelLimits.append(ModelLimit(modelName: name, utilization: percent, resetsAt: resetsAt))
+            }
+        }
 
         var extraUsage: ExtraUsage?
         if let extraJSON = json["extra_usage"] as? [String: Any] {
@@ -234,16 +275,14 @@ public enum UsageAPIClient {
             sevenDay: parseWindow(sevenDayJSON),
             sevenDaySonnet: sevenDaySonnet,
             sevenDayOpus: sevenDayOpus,
+            modelLimits: modelLimits,
             extraUsage: extraUsage
         )
     }
 
     private static func parseWindow(_ json: [String: Any]) -> UsageWindow {
         let utilization = (json["utilization"] as? Double) ?? 0
-        var resetsAt: Date?
-        if let resetStr = json["resets_at"] as? String {
-            resetsAt = isoFormatter.date(from: resetStr) ?? isoFormatterNoFrac.date(from: resetStr)
-        }
+        let resetsAt = (json["resets_at"] as? String).flatMap(parseAPIDate)
         return UsageWindow(utilization: utilization, resetsAt: resetsAt)
     }
 
