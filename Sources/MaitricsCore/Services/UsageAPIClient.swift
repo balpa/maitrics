@@ -97,6 +97,16 @@ public enum UsageAPIClient {
     /// Last API error for UI display
     public static var lastError: APIError?
 
+    /// `timeoutInterval` alone only caps *inactivity*, so a server that drips a
+    /// byte at a time can keep a request alive indefinitely. The resource timeout
+    /// is the wall-clock cap that actually bounds the call.
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 5
+        config.timeoutIntervalForResource = 15
+        return URLSession(configuration: config)
+    }()
+
     private static func apiRequest(url: URL, token: String) async throws -> Data {
         var request = URLRequest(url: url)
         request.timeoutInterval = 5
@@ -106,7 +116,7 @@ public enum UsageAPIClient {
         request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
         request.setValue("maitrics/0.1.0", forHTTPHeaderField: "User-Agent")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw APIError.networkError("No response")
         }

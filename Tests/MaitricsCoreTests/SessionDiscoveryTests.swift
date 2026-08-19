@@ -29,6 +29,33 @@ final class SessionDiscoveryTests: XCTestCase {
         XCTAssertEqual(second.gitBranch, "feat/dark-mode")
     }
 
+    // MARK: - Project directory enumeration
+
+    /// Regression: a symlinked project directory inside `~/.claude/projects` must
+    /// still be scanned. URL resource values report a symlink as "not a directory",
+    /// so filtering on those alone would silently drop every one of its sessions.
+    func testDiscoversSessionsThroughASymlinkedProjectDirectory() throws {
+        let fm = FileManager.default
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("SessionDiscoveryTests-\(UUID().uuidString)")
+        let projects = root.appendingPathComponent("projects")
+        let realProject = root.appendingPathComponent("elsewhere/-Users-test-Documents-linked")
+        try fm.createDirectory(at: projects, withIntermediateDirectories: true)
+        try fm.createDirectory(at: realProject, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: root) }
+
+        try #"{"type":"user","message":{"content":"hello from a symlink"}}"#
+            .write(to: realProject.appendingPathComponent("abc.jsonl"), atomically: true, encoding: .utf8)
+        try fm.createSymbolicLink(
+            at: projects.appendingPathComponent("-Users-test-Documents-linked"),
+            withDestinationURL: realProject
+        )
+
+        let sessions = try SessionDiscovery.discoverSessions(claudeProjectsDir: projects)
+        XCTAssertEqual(sessions.count, 1)
+        XCTAssertEqual(sessions.first?.projectName, "linked")
+    }
+
     // MARK: - testDecodeProjectNameFromPath
 
     func testDecodeProjectNameFromPath() {

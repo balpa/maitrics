@@ -14,10 +14,21 @@ public final class ClaudeDataManager {
     public var apiError: UsageAPIClient.APIError? { UsageAPIClient.lastError }
 
     private let settings: AppSettings
-    private var sessionTokenCache: [String: (mtime: Date, usage: SessionTokenUsage)] = [:]
+    private let usageIndex: JSONLUsageIndex
 
-    public init(settings: AppSettings = AppSettings()) {
+    /// Guards against stacking refreshes: the file watcher, the popover and the
+    /// initial load can all fire at once, and each refresh walks the session
+    /// transcripts. Overlapping runs would multiply that work for nothing — but a
+    /// request that arrives mid-run must not be *lost* either, or the newest
+    /// stats-cache contents stay hidden until some later unrelated write, so one
+    /// follow-up run is remembered and issued when the current one finishes.
+    private let refreshLock = NSLock()
+    private var isRefreshing = false
+    private var refreshPending = false
+
+    public init(settings: AppSettings = AppSettings(), usageIndex: JSONLUsageIndex = JSONLUsageIndex()) {
         self.settings = settings
+        self.usageIndex = usageIndex
         PricingUpdater.loadCachedPricing()
     }
 
@@ -113,11 +124,34 @@ public final class ClaudeDataManager {
     // MARK: - Refresh
 
     public func refresh() {
+        refreshLock.lock()
+        if isRefreshing {
+            refreshPending = true
+            refreshLock.unlock()
+            return
+        }
+        isRefreshing = true
+        refreshPending = false
+        refreshLock.unlock()
+
         isLoading = true
         error = nil
 
-        Task.detached { [weak self] in
+        Task.detached(priority: .utility) { [weak self] in
             guard let self else { return }
+            defer {
+                self.refreshLock.lock()
+                self.isRefreshing = false
+                let hadPending = self.refreshPending
+                self.refreshPending = false
+                self.refreshLock.unlock()
+                // Back to the main actor: refresh() writes the @Observable
+                // isLoading/error that SwiftUI reads on main, and this is the
+                // only call site that would otherwise re-enter off-main.
+                if hadPending {
+                    Task { @MainActor in self.refresh() }
+                }
+            }
             let settings = self.settings
 
             // Parse stats cache
@@ -131,31 +165,36 @@ public final class ClaudeDataManager {
                 }
             }
 
+            // One directory walk feeds both the daily totals and the recent list
+            let discovered = (try? SessionDiscovery.discoverSessions(claudeProjectsDir: settings.projectsPath)) ?? []
+
             // Compute live daily tokens from recent session JSONL files
             let newLiveDailyTokens = self.computeLiveDailyTokens(
                 lastComputedDate: newStatsCache?.lastComputedDate,
-                projectsDir: settings.projectsPath
+                sessions: discovered
             )
 
-            // Discover sessions
-            var newSessions: [RecentSession] = []
-            if let discovered = try? SessionDiscovery.discoverSessions(claudeProjectsDir: settings.projectsPath) {
-                let topSessions = Array(discovered.prefix(5))
-                newSessions = topSessions.map { session in
-                    let tokenUsage = self.cachedTokenUsage(for: session, settings: settings)
-                    let cost = tokenUsage.map { CostCalculator.cost(for: $0, customPricing: settings.customPricing) } ?? 0
-                    let totalTokens = tokenUsage?.displayTokens ?? 0
-                    return RecentSession(
-                        sessionId: session.sessionId,
-                        firstPrompt: session.firstPrompt,
-                        projectName: session.projectName,
-                        gitBranch: session.gitBranch,
-                        modified: session.modified,
-                        totalTokens: totalTokens,
-                        estimatedCost: cost
-                    )
-                }
+            let newSessions: [RecentSession] = discovered.prefix(5).map { session in
+                let tokenUsage = session.jsonlPath.flatMap { self.usageIndex.tokenUsage(forPath: $0) }
+                let cost = tokenUsage.map { CostCalculator.cost(for: $0, customPricing: settings.customPricing) } ?? 0
+                let totalTokens = tokenUsage?.displayTokens ?? 0
+                return RecentSession(
+                    sessionId: session.sessionId,
+                    firstPrompt: session.firstPrompt,
+                    projectName: session.projectName,
+                    gitBranch: session.gitBranch,
+                    modified: session.modified,
+                    totalTokens: totalTokens,
+                    estimatedCost: cost
+                )
             }
+
+            // An empty discovery means the projects directory was unreadable, not
+            // that every session vanished — pruning on that would wipe the index.
+            if !discovered.isEmpty {
+                self.usageIndex.prune(keeping: Set(discovered.compactMap { $0.jsonlPath }))
+            }
+            self.usageIndex.save()
 
             // Fetch API data + check pricing updates (pricing runs unawaited so
             // a slow ~1.7MB price download never blocks the dashboard refresh)
@@ -184,8 +223,10 @@ public final class ClaudeDataManager {
 
     // MARK: - Live Daily Tokens from JSONL
 
-    /// Scan recent session JSONL files for dates after lastComputedDate to fill the gap
-    private func computeLiveDailyTokens(lastComputedDate: String?, projectsDir: URL) -> [String: [String: Int]] {
+    /// Fill the gap between the stats cache's last computed day and today from
+    /// the live session transcripts. The heavy lifting is delegated to
+    /// `JSONLUsageIndex`, which only reads bytes appended since the last pass.
+    private func computeLiveDailyTokens(lastComputedDate: String?, sessions: [DiscoveredSession]) -> [String: [String: Int]] {
         let formatter = Self.dateFormatter
         let cutoffDate: Date
         if let lcd = lastComputedDate, let d = formatter.date(from: lcd) {
@@ -198,69 +239,11 @@ public final class ClaudeDataManager {
         // Only process if there's actually a gap
         guard cutoffDate < Date() else { return [:] }
 
-        var dailyTokens: [String: [String: Int]] = [:] // date -> model -> tokens
-
-        guard let discovered = try? SessionDiscovery.discoverSessions(claudeProjectsDir: projectsDir) else { return [:] }
-
-        // Only process sessions modified after the cutoff
-        let recentSessions = discovered.filter { $0.modified > cutoffDate }
-
-        for session in recentSessions {
-            guard let path = session.jsonlPath else { continue }
-            let fileURL = URL(fileURLWithPath: path)
-            guard let data = try? Data(contentsOf: fileURL),
-                  let text = String(data: data, encoding: .utf8) else { continue }
-
-            for line in text.components(separatedBy: .newlines) where !line.isEmpty {
-                guard let lineData = line.data(using: .utf8),
-                      let obj = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
-                      obj["type"] as? String == "assistant",
-                      let message = obj["message"] as? [String: Any],
-                      let model = message["model"] as? String,
-                      let usage = message["usage"] as? [String: Any] else { continue }
-
-                // Get the timestamp for this message to determine which day
-                let dateStr: String
-                if let timestamp = obj["timestamp"] as? String,
-                   let msgDate = SessionDiscovery.parseDate(timestamp) as Date?,
-                   msgDate != Date.distantPast {
-                    dateStr = formatter.string(from: msgDate)
-                } else {
-                    dateStr = formatter.string(from: session.modified)
-                }
-
-                // Only count dates after the cutoff
-                guard let dayDate = formatter.date(from: dateStr), dayDate > cutoffDate else { continue }
-
-                // Only count input + output (matches stats-cache.json; excludes cache tokens)
-                let output = usage["output_tokens"] as? Int ?? 0
-                let input = usage["input_tokens"] as? Int ?? 0
-                let total = input + output
-
-                dailyTokens[dateStr, default: [:]][model, default: 0] += total
-            }
-        }
-
-        return dailyTokens
+        let paths = sessions.filter { $0.modified > cutoffDate }.compactMap { $0.jsonlPath }
+        return usageIndex.dailyTokens(forPaths: paths, after: cutoffDate)
     }
 
     // MARK: - Helpers
-
-    private func cachedTokenUsage(for session: DiscoveredSession, settings: AppSettings) -> SessionTokenUsage? {
-        guard let path = session.jsonlPath else { return nil }
-        let fileURL = URL(fileURLWithPath: path)
-
-        let fm = FileManager.default
-        let mtime = (try? fm.attributesOfItem(atPath: path))?[.modificationDate] as? Date ?? Date.distantPast
-
-        if let cached = sessionTokenCache[session.sessionId], cached.mtime == mtime {
-            return cached.usage
-        }
-
-        guard let usage = try? SessionParser.parseTokenUsage(fileURL: fileURL) else { return nil }
-        sessionTokenCache[session.sessionId] = (mtime: mtime, usage: usage)
-        return usage
-    }
 
     /// Estimate daily cost from input+output token totals per model.
     /// Uses weighted average of input/output pricing based on the aggregate ratio.
@@ -297,12 +280,8 @@ public final class ClaudeDataManager {
         return grouped
     }
 
-    private static let dateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.timeZone = .current
-        return f
-    }()
+    /// Shared with `JSONLUsageIndex`, which produces the day keys read back here.
+    private static let dateFormatter = JSONLUsageIndex.makeDayFormatter()
 
     static func dateString(for date: Date) -> String {
         dateFormatter.string(from: date)

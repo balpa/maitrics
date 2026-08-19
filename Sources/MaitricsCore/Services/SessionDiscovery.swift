@@ -38,16 +38,23 @@ public enum SessionDiscovery {
         let fm = FileManager.default
         guard fm.fileExists(atPath: claudeProjectsDir.path) else { return [] }
 
-        let projectDirs = try fm.contentsOfDirectory(at: claudeProjectsDir, includingPropertiesForKeys: nil)
-            .filter { url in
-                var isDir: ObjCBool = false
-                return fm.fileExists(atPath: url.path, isDirectory: &isDir) && isDir.boolValue
-            }
+        // A project directory may be a symlink. `contentsOfDirectory` does not
+        // follow one, so resolve it for the filesystem reads — while keeping the
+        // link's own name, which is the encoded project path the name is derived
+        // from and need not match the target's.
+        let projectDirs: [(name: String, url: URL)] = try fm.contentsOfDirectory(
+            at: claudeProjectsDir,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ).compactMap { url in
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue else { return nil }
+            return (name: url.lastPathComponent, url: url.resolvingSymlinksInPath())
+        }
 
         var sessions: [DiscoveredSession] = []
 
-        for projectDir in projectDirs {
-            let encodedName = projectDir.lastPathComponent
+        for (encodedName, projectDir) in projectDirs {
             let name = projectName(fromEncodedPath: encodedName)
             let indexFile = projectDir.appendingPathComponent("sessions-index.json")
 
@@ -75,7 +82,7 @@ public enum SessionDiscovery {
                     let attrs = try? fm.attributesOfItem(atPath: jsonlFile.path)
                     let modified = (attrs?[.modificationDate] as? Date) ?? Date.distantPast
                     let created = (attrs?[.creationDate] as? Date) ?? modified
-                    let prompt = extractFirstPrompt(from: jsonlFile)
+                    let prompt = cachedFirstPrompt(for: jsonlFile)
 
                     sessions.append(DiscoveredSession(
                         sessionId: sessionId,
@@ -93,6 +100,7 @@ public enum SessionDiscovery {
         }
 
         sessions.sort { $0.modified > $1.modified }
+        prunePromptCache(keeping: Set(sessions.compactMap { $0.jsonlPath }))
         return sessions
     }
 
@@ -108,6 +116,34 @@ public enum SessionDiscovery {
             return "IDE session"
         }
         if prompt.count > 100 { return String(prompt.prefix(100)) }
+        return prompt
+    }
+
+    /// The first prompt is fixed once a transcript exists, so reading the head of
+    /// every JSONL file on each discovery pass is pure waste — memoize by path.
+    private static let promptCacheLock = NSLock()
+    private static var promptCache: [String: String] = [:]
+
+    /// Deleted or rotated transcripts would otherwise linger in the cache for the
+    /// lifetime of this long-running menu bar app.
+    private static func prunePromptCache(keeping livePaths: Set<String>) {
+        guard !livePaths.isEmpty else { return }
+        promptCacheLock.lock()
+        promptCache = promptCache.filter { livePaths.contains($0.key) }
+        promptCacheLock.unlock()
+    }
+
+    private static func cachedFirstPrompt(for jsonlFile: URL) -> String? {
+        let path = jsonlFile.path
+        promptCacheLock.lock()
+        let cached = promptCache[path]
+        promptCacheLock.unlock()
+        if let cached { return cached }
+
+        guard let prompt = extractFirstPrompt(from: jsonlFile) else { return nil }
+        promptCacheLock.lock()
+        promptCache[path] = prompt
+        promptCacheLock.unlock()
         return prompt
     }
 
