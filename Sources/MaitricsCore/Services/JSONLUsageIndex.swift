@@ -32,8 +32,19 @@ public final class JSONLUsageIndex: @unchecked Sendable {
         /// Byte offset up to which complete lines have been accounted for.
         var offset: Int64 = 0
         var byModel: [String: Tokens] = [:]
-        /// date (yyyy-MM-dd, local) -> model -> input+output tokens
-        var byDayModel: [String: [String: Int]] = [:]
+        /// date (yyyy-MM-dd, local) -> model -> full token breakdown
+        var byDayModel: [String: [String: Tokens]] = [:]
+        /// hour (yyyy-MM-dd HH, local) -> model -> full token breakdown
+        var byHourModel: [String: [String: Tokens]] = [:]
+        /// The last counted message. A line with the same key replaces it.
+        var lastMessage: CountedMessage?
+    }
+
+    struct CountedMessage: Codable, Equatable {
+        var key: String
+        var model: String
+        var hour: String?
+        var tokens: Tokens
     }
 
     private struct Cache: Codable {
@@ -41,11 +52,18 @@ public final class JSONLUsageIndex: @unchecked Sendable {
         var entries: [String: Entry]
     }
 
-    private static let cacheVersion = 1
+    // v2: byDayModel switched from a bare input+output Int to the full Tokens
+    // breakdown, so cost (not just token count) can be estimated for days the
+    // stats cache hasn't covered yet. Older caches simply get discarded and
+    // rebuilt from the still-present JSONL files.
+    // v3: adds byHourModel for the hourly trend.
+    // v4: counts each message one time. Before, each content block line of a message was counted.
+    private static let cacheVersion = 4
 
     private let cacheURL: URL
     private let chunkSize: Int
     private let dayFormatter: DateFormatter
+    private let hourFormatter: DateFormatter
     private let lock = NSLock()
     private var entries: [String: Entry] = [:]
     private var dirty = false
@@ -60,6 +78,7 @@ public final class JSONLUsageIndex: @unchecked Sendable {
         self.cacheURL = cacheURL ?? Self.defaultCacheURL()
         self.chunkSize = chunkSize
         self.dayFormatter = Self.makeDayFormatter(timeZone: timeZone)
+        self.hourFormatter = Self.makeHourFormatter(timeZone: timeZone)
         load()
     }
 
@@ -86,6 +105,25 @@ public final class JSONLUsageIndex: @unchecked Sendable {
         return SessionTokenUsage(byModel: byModel)
     }
 
+    public func fileUsage(forPath path: String) -> FileUsage? {
+        guard let entry = entry(forPath: path) else { return nil }
+        return FileUsage(byDay: entry.byDayModel.mapValues(Self.modelTokens),
+                         byHour: entry.byHourModel.mapValues(Self.modelTokens))
+    }
+
+    public struct FileUsage: Sendable {
+        public let byDay: [String: [String: ModelTokens]]
+        public let byHour: [String: [String: ModelTokens]]
+    }
+
+    private static func modelTokens(_ models: [String: Tokens]) -> [String: ModelTokens] {
+        models.mapValues {
+            ModelTokens(inputTokens: $0.inputTokens, outputTokens: $0.outputTokens,
+                        cacheReadInputTokens: $0.cacheReadInputTokens,
+                        cacheCreationInputTokens: $0.cacheCreationInputTokens)
+        }
+    }
+
     /// Merged `date -> model -> input+output` totals for the given session files,
     /// restricted to days strictly after `cutoff`.
     public func dailyTokens(forPaths paths: [String], after cutoff: Date) -> [String: [String: Int]] {
@@ -96,7 +134,31 @@ public final class JSONLUsageIndex: @unchecked Sendable {
             for (day, models) in entry.byDayModel {
                 guard let dayDate = formatter.date(from: day), dayDate > cutoff else { continue }
                 for (model, tokens) in models {
-                    merged[day, default: [:]][model, default: 0] += tokens
+                    merged[day, default: [:]][model, default: 0] += tokens.inputTokens + tokens.outputTokens
+                }
+            }
+        }
+        return merged
+    }
+
+    /// Merged `date -> model -> full token breakdown` for the given session
+    /// files, restricted to days strictly after `cutoff`. Unlike `dailyTokens`,
+    /// this keeps input/output/cache split apart so cost can be estimated
+    /// directly instead of guessed from an aggregate ratio.
+    public func dailyModelUsage(forPaths paths: [String], after cutoff: Date) -> [String: [String: ModelTokens]] {
+        let formatter = dayFormatter
+        var merged: [String: [String: ModelTokens]] = [:]
+        for path in paths {
+            guard let entry = entry(forPath: path) else { continue }
+            for (day, models) in entry.byDayModel {
+                guard let dayDate = formatter.date(from: day), dayDate > cutoff else { continue }
+                for (model, tokens) in models {
+                    var acc = merged[day]?[model] ?? .zero
+                    acc.inputTokens += tokens.inputTokens
+                    acc.outputTokens += tokens.outputTokens
+                    acc.cacheReadInputTokens += tokens.cacheReadInputTokens
+                    acc.cacheCreationInputTokens += tokens.cacheCreationInputTokens
+                    merged[day, default: [:]][model] = acc
                 }
             }
         }
@@ -159,7 +221,9 @@ public final class JSONLUsageIndex: @unchecked Sendable {
 
         var leftover = Data()
         var offset = entry.offset
-        var tally = Tally(formatter: dayFormatter, byModel: entry.byModel, byDayModel: entry.byDayModel)
+        var tally = Tally(formatter: hourFormatter, byModel: entry.byModel,
+                          byDayModel: entry.byDayModel, byHourModel: entry.byHourModel,
+                          lastMessage: entry.lastMessage)
 
         while true {
             let chunk: Data?
@@ -195,6 +259,8 @@ public final class JSONLUsageIndex: @unchecked Sendable {
         entry.offset = offset
         entry.byModel = tally.byModel
         entry.byDayModel = tally.byDayModel
+        entry.byHourModel = tally.byHourModel
+        entry.lastMessage = tally.lastMessage
 
         lock.lock()
         let changed = entries[path] != entry
@@ -213,13 +279,15 @@ public final class JSONLUsageIndex: @unchecked Sendable {
         return entries[path]
     }
 
-    /// Running totals plus a one-slot memo for timestamp -> local day conversion.
+    /// Running totals plus a one-slot memo for timestamp -> local hour conversion.
     private struct Tally {
         let formatter: DateFormatter
         var byModel: [String: Tokens]
-        var byDayModel: [String: [String: Int]]
+        var byDayModel: [String: [String: Tokens]]
+        var byHourModel: [String: [String: Tokens]]
+        var lastMessage: CountedMessage?
         var memoKey: String = ""
-        var memoDay: String = ""
+        var memoHour: String = ""
     }
 
     /// Splits `buffer` on newlines, folds every assistant message into `tally`,
@@ -258,22 +326,40 @@ public final class JSONLUsageIndex: @unchecked Sendable {
         let data = Data(bytes: ptr, count: length)
         guard let parsed = SessionParser.parseAssistantUsage(line: data) else { return }
         let model = parsed.model
+        let tokens = Tokens(inputTokens: parsed.tokens.inputTokens, outputTokens: parsed.tokens.outputTokens,
+                            cacheCreationInputTokens: parsed.tokens.cacheCreationInputTokens,
+                            cacheReadInputTokens: parsed.tokens.cacheReadInputTokens)
 
-        var tokens = tally.byModel[model] ?? Tokens()
-        tokens.inputTokens += parsed.tokens.inputTokens
-        tokens.outputTokens += parsed.tokens.outputTokens
-        tokens.cacheCreationInputTokens += parsed.tokens.cacheCreationInputTokens
-        tokens.cacheReadInputTokens += parsed.tokens.cacheReadInputTokens
-        tally.byModel[model] = tokens
+        if let last = tally.lastMessage, let key = parsed.messageKey, key == last.key {
+            apply(last.tokens, sign: -1, model: last.model, hour: last.hour, to: &tally)
+        }
 
         // A message with no parseable timestamp still counts toward the session
         // total but is deliberately left out of the per-day breakdown: there is no
         // honest day to attribute it to, and daily totals fall back to the stats
         // cache for any day the live scan does not cover.
-        guard let timestamp = parsed.timestamp else { return }
-        let day = localDay(for: timestamp, tally: &tally)
-        guard !day.isEmpty else { return }
-        tally.byDayModel[day, default: [:]][model, default: 0] += parsed.tokens.inputTokens + parsed.tokens.outputTokens
+        var hour: String?
+        if let timestamp = parsed.timestamp {
+            let h = localHour(for: timestamp, tally: &tally)
+            if !h.isEmpty { hour = h }
+        }
+        apply(tokens, sign: 1, model: model, hour: hour, to: &tally)
+        tally.lastMessage = parsed.messageKey.map { CountedMessage(key: $0, model: model, hour: hour, tokens: tokens) }
+    }
+
+    private static func apply(_ tokens: Tokens, sign: Int, model: String, hour: String?, to tally: inout Tally) {
+        add(tokens, sign: sign, to: &tally.byModel[model, default: Tokens()])
+        guard let hour else { return }
+        let day = String(hour.prefix(10))
+        add(tokens, sign: sign, to: &tally.byDayModel[day, default: [:]][model, default: Tokens()])
+        add(tokens, sign: sign, to: &tally.byHourModel[hour, default: [:]][model, default: Tokens()])
+    }
+
+    private static func add(_ tokens: Tokens, sign: Int, to total: inout Tokens) {
+        total.inputTokens += sign * tokens.inputTokens
+        total.outputTokens += sign * tokens.outputTokens
+        total.cacheCreationInputTokens += sign * tokens.cacheCreationInputTokens
+        total.cacheReadInputTokens += sign * tokens.cacheReadInputTokens
     }
 
     /// Messages arrive in chronological order, so consecutive lines almost always
@@ -286,18 +372,18 @@ public final class JSONLUsageIndex: @unchecked Sendable {
     /// hour-keyed memo would book the tokens after midnight to the wrong day.
     private static let memoKeyLength = 16  // "yyyy-MM-ddTHH:mm"
 
-    private static func localDay(for timestamp: String, tally: inout Tally) -> String {
+    private static func localHour(for timestamp: String, tally: inout Tally) -> String {
         let key = String(timestamp.prefix(memoKeyLength))
-        if key.count == memoKeyLength && key == tally.memoKey { return tally.memoDay }
+        if key.count == memoKeyLength && key == tally.memoKey { return tally.memoHour }
 
         let date = SessionDiscovery.parseDate(timestamp)
         guard date != Date.distantPast else { return "" }
-        let day = tally.formatter.string(from: date)
+        let hour = tally.formatter.string(from: date)
         if key.count == memoKeyLength {
             tally.memoKey = key
-            tally.memoDay = day
+            tally.memoHour = hour
         }
-        return day
+        return hour
     }
 
     // MARK: - Persistence
@@ -321,6 +407,15 @@ public final class JSONLUsageIndex: @unchecked Sendable {
     public static func makeDayFormatter(timeZone: TimeZone = .current) -> DateFormatter {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = timeZone
+        return f
+    }
+
+    /// The first 10 characters of an hour key are its day key.
+    public static func makeHourFormatter(timeZone: TimeZone = .current) -> DateFormatter {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH"
         f.locale = Locale(identifier: "en_US_POSIX")
         f.timeZone = timeZone
         return f

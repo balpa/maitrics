@@ -99,9 +99,21 @@ public enum SessionDiscovery {
             }
         }
 
+        for i in sessions.indices {
+            if let path = sessions[i].jsonlPath {
+                sessions[i].subagentPaths = subagentTranscripts(for: path)
+            }
+        }
         sessions.sort { $0.modified > $1.modified }
         prunePromptCache(keeping: Set(sessions.compactMap { $0.jsonlPath }))
         return sessions
+    }
+
+    /// Subagent transcripts are in `<session>/subagents/*.jsonl`, next to `<session>.jsonl`.
+    static func subagentTranscripts(for jsonlPath: String) -> [String] {
+        let dir = (jsonlPath as NSString).deletingPathExtension + "/subagents"
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return [] }
+        return names.filter { $0.hasSuffix(".jsonl") }.sorted().map { dir + "/" + $0 }
     }
 
     private static func cleanPrompt(_ prompt: String) -> String {
