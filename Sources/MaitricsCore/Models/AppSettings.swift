@@ -7,16 +7,6 @@ public final class AppSettings: @unchecked Sendable {
         self.defaults = defaults
     }
 
-    public var thresholdGreen: Int {
-        get { defaults.object(forKey: "thresholdGreen") as? Int ?? 100_000 }
-        set { defaults.set(newValue, forKey: "thresholdGreen") }
-    }
-
-    public var thresholdYellow: Int {
-        get { defaults.object(forKey: "thresholdYellow") as? Int ?? 500_000 }
-        set { defaults.set(newValue, forKey: "thresholdYellow") }
-    }
-
     public var claudeDataPath: String {
         get { defaults.string(forKey: "claudeDataPath") ?? defaultClaudePath }
         set { defaults.set(newValue, forKey: "claudeDataPath") }

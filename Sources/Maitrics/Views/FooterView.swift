@@ -3,24 +3,33 @@ import MaitricsCore
 
 struct FooterView: View {
     let lastRefresh: Date?
-    let isWatching: Bool
+    let refreshMode: RefreshMode
+    let onRefresh: () -> Void
 
     var body: some View {
         HStack {
             HStack(spacing: 4) {
                 Circle()
-                    .fill(isWatching ? Color(red: 74/255, green: 222/255, blue: 128/255) : Color(white: 0.55))
+                    .fill(refreshMode == .manual ? Color(white: 0.55) : Color(red: 74/255, green: 222/255, blue: 128/255))
                     .frame(width: 5, height: 5)
-                Text(isWatching ? "Live · watching ~/.claude" : "Paused")
+                Text(refreshLabel)
                     .font(.system(size: 9))
                     .foregroundColor(Color(white: 0.55))
             }
 
             Spacer()
 
-            Text("Last: \(lastRefreshText)")
-                .font(.system(size: 9))
-                .foregroundColor(Color(white: 0.55))
+            Button(action: onRefresh) {
+                HStack(spacing: 3) {
+                    Image(systemName: "arrow.clockwise")
+                    Text("Last: \(lastRefreshText)")
+                }
+            }
+            .buttonStyle(.plain)
+            .focusable(false)
+            .font(.system(size: 9))
+            .foregroundColor(Color(white: 0.55))
+            .help("Refresh now")
 
             Text("·")
                 .font(.system(size: 9))
@@ -37,6 +46,14 @@ struct FooterView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 10)
+    }
+
+    private var refreshLabel: String {
+        switch refreshMode {
+        case .adaptive: return "Auto-refresh · adaptive"
+        case .manual: return "Auto-refresh off"
+        default: return "Auto-refresh · every \(refreshMode.rawValue)"
+        }
     }
 
     private var lastRefreshText: String {
