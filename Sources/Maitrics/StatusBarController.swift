@@ -109,10 +109,15 @@ final class StatusBarController {
             rootView: PopoverContentView(
                 dataManager: dataManager,
                 settings: settings,
-                state: popoverState
+                state: popoverState,
+                onHeightChange: { [weak self] height in
+                    self?.popover.contentSize = NSSize(width: 400, height: height)
+                }
             )
             .preferredColorScheme(.dark)
         )
+        // The popover size comes only from onHeightChange. Two size sources cause a layout loop.
+        hostingController.sizingOptions = []
         popover.contentViewController = hostingController
     }
 

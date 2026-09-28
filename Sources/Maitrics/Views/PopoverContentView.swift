@@ -5,7 +5,9 @@ struct PopoverContentView: View {
     @Bindable var dataManager: ClaudeDataManager
     let settings: AppSettings
     @Bindable var state: PopoverState
+    var onHeightChange: (CGFloat) -> Void = { _ in }
     @State private var showSettings = false
+    @State private var dashboardHeight: CGFloat = 700
 
     var body: some View {
         ZStack {
@@ -65,13 +67,23 @@ struct PopoverContentView: View {
                             onRefresh: { dataManager.refresh() }
                         )
                     }
+                    .background(GeometryReader { geo in
+                        Color.clear.preference(key: ContentHeightKey.self, value: geo.size.height)
+                    })
+                }
+                .onPreferenceChange(ContentHeightKey.self) { height in
+                    dashboardHeight = height
+                    onHeightChange(popoverHeight)
                 }
             }
         }
-        .frame(width: 400)
-        .fixedSize(horizontal: false, vertical: true)
+        .frame(width: 400, height: popoverHeight)
         .clipped()
         .focusable(false)
+    }
+
+    private var popoverHeight: CGFloat {
+        min(dashboardHeight, (NSScreen.main?.visibleFrame.height ?? 800) - 40)
     }
 
     private func trendSummary(_ range: TrendRange) -> UsageSummary {
@@ -124,4 +136,11 @@ struct VisualEffectBackground: NSViewRepresentable {
         return view
     }
     func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+private struct ContentHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
 }
