@@ -49,13 +49,15 @@ public enum UsageAPIClient {
     private static let profileEndpoint = URL(string: "https://api.anthropic.com/api/oauth/profile")!
     private static let cacheFile = URL(fileURLWithPath: "/tmp/claude/maitrics-usage-cache.json")
     private static let profileCacheFile = URL(fileURLWithPath: "/tmp/claude/maitrics-profile-cache.json")
-    private static let cacheTTL: TimeInterval = 60
+    /// Less than the 60s refresh interval, so each scheduled refresh gets new data.
+    private static let cacheTTL: TimeInterval = 45
     private static let profileCacheTTL: TimeInterval = 3600 // 1 hour for profile
 
     // MARK: - Public
 
     public static func fetchUsage() async -> UsageData? {
         if let cached = readCache() { return cached }
+        if let rateLimitedUntil, Date() < rateLimitedUntil { return readCache(ignoreExpiry: true) }
 
         guard let token = resolveOAuthToken() else { return nil }
 
@@ -96,6 +98,7 @@ public enum UsageAPIClient {
 
     /// Last API error for UI display
     public static var lastError: APIError?
+    private static var rateLimitedUntil: Date?
 
     /// `timeoutInterval` alone only caps *inactivity*, so a server that drips a
     /// byte at a time can keep a request alive indefinitely. The resource timeout
@@ -130,6 +133,7 @@ public enum UsageAPIClient {
             throw APIError.unauthorized
         case 429:
             let retryAfter = http.value(forHTTPHeaderField: "Retry-After").flatMap(Int.init)
+            rateLimitedUntil = Date().addingTimeInterval(TimeInterval(retryAfter ?? 300))
             lastError = .rateLimited(retryAfter: retryAfter)
             throw APIError.rateLimited(retryAfter: retryAfter)
         default:
