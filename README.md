@@ -8,11 +8,18 @@ A native macOS menu bar app that displays your [Claude Code](https://docs.anthro
 
 - **Menu bar status widget** — Stacked gradient bars showing session and weekly usage at a glance
 - **Rate limits** — Real-time session (5h) and weekly (7d) usage with reset timers, per-model quotas
-- **Today's summary** — Estimated cost, token count, and session count
-- **Model breakdown** — Token usage split by model family (Opus, Sonnet, Haiku)
-- **Usage trend chart** — Interactive bar chart with 7-day, 30-day, and all-time views with hover tooltips
-- **Recent sessions** — Last 5 sessions with prompts, project names, branches, token counts, and costs
-- **Inline settings** — Connection status, icon thresholds, model pricing, launch at login
+- **Pace** — A marker for even usage on each limit bar, how far ahead or under pace you are, and when the limit runs out at the current rate
+- **Usage alerts** — Notifications when a limit passes the thresholds you pick (50–95%), and when a limit resets
+- **Usage summary** — Today and last 30 days, tokens and estimated cost
+- **Details on demand** — The popover opens compact; "Show details" adds the rest:
+  - **Model breakdown** — Token usage split by model family
+  - **Usage trend** — 24h (hourly), 7d, 30d and all-time charts for tokens or cost, with total, daily average and top model
+  - **Projects** — Cost and tokens per project for today, 7 or 30 days
+  - **Recent sessions** — Last 5 sessions with prompts, project names, branches, token counts, and costs
+- **Accurate counting** — Each message counts once, and subagent (Task) transcripts are included
+- **Cost mode** — Input and output only, or API-equivalent cost with cache tokens
+- **Auto refresh** — Adaptive (every minute while Claude Code runs, every 10 minutes when idle) or a fixed 1–30 minute interval, plus refresh on wake
+- **Inline settings** — Connection status, refresh, notifications, cost mode, model pricing, launch at login
 - **Auto-updating pricing** — Model pricing fetched automatically from upstream
 - **Live file watching** — Monitors `~/.claude/` for real-time updates
 

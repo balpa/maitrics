@@ -39,12 +39,14 @@ Scripts/create-dmg.sh 0.1.0
 - `Maitrics` (executable) — AppKit menu bar controller + SwiftUI views
 
 ### Key Components
-- `MaitricsApp` — App entry point with `@NSApplicationDelegateAdaptor`, creates StatusBarController
-- `StatusBarController` — Owns NSStatusItem + NSPopover, manages icon color thresholds, file watcher
+- `MaitricsApp` — AppKit entry point (`NSApplication` + `AppDelegate`, no SwiftUI scene), creates StatusBarController
+- `StatusBarController` — Owns NSStatusItem + NSPopover, file watcher, refresh timer, usage alerts
 - `ClaudeDataManager` (`@Observable`) — Orchestrates all data parsing, async refresh on background thread
 - `CostCalculator` — Estimates costs from token counts using configurable per-model pricing
 - `SessionDiscovery` — Scans `~/.claude/projects/` for sessions (index-based or JSONL fallback)
 - `FileWatcher` — DispatchSource-based monitoring of stats-cache.json with parent-dir fallback
+- `JSONLUsageIndex` — Incremental, persisted token tallies per transcript (by model, day and hour); counts each message once
+- `RefreshPolicy` / `UsagePace` / `UsageAlertEvaluator` — Refresh timing, burn-down projection, notification thresholds
 
 ## Git Rules
 
