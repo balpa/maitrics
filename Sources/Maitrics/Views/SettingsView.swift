@@ -195,13 +195,15 @@ struct SettingsView: View {
                             Text(errorMessage(apiError, now: context.date))
                         }
                         Spacer()
-                        Button("Re-login to fix") {
-                            relogin()
+                        if case .unauthorized = apiError {
+                            Button("Re-login to fix") {
+                                relogin()
+                            }
+                            .buttonStyle(.plain)
+                            .focusable(false)
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(Color(red: 96/255, green: 165/255, blue: 250/255))
                         }
-                        .buttonStyle(.plain)
-                        .focusable(false)
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(Color(red: 96/255, green: 165/255, blue: 250/255))
                     }
                     .font(.system(size: 9))
                     .foregroundColor(Color(red: 255/255, green: 176/255, blue: 85/255))
