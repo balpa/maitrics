@@ -4,6 +4,7 @@ import ServiceManagement
 
 struct SettingsView: View {
     let settings: AppSettings
+    var apiError: UsageAPIClient.APIError?
     var onCostModeChange: () -> Void = {}
     @State private var launchAtLogin: Bool = false
     @State private var refreshMode: RefreshMode = .adaptive
@@ -186,11 +187,13 @@ struct SettingsView: View {
                     .font(.system(size: 9))
                     .foregroundColor(Color(white: 0.55))
                 }
-                if let error = UsageAPIClient.lastError {
+                if let apiError {
                     HStack(spacing: 4) {
                         Image(systemName: "exclamationmark.triangle")
                             .font(.system(size: 9))
-                        Text(errorMessage(error))
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            Text(errorMessage(apiError, now: context.date))
+                        }
                         Spacer()
                         Button("Re-login to fix") {
                             relogin()
@@ -314,11 +317,13 @@ struct SettingsView: View {
     }
 
 
-    private func errorMessage(_ error: UsageAPIClient.APIError) -> String {
+    private func errorMessage(_ error: UsageAPIClient.APIError, now: Date) -> String {
         switch error {
-        case .rateLimited(let retryAfter):
-            if let seconds = retryAfter { return "Rate limited. Retry in \(seconds)s" }
-            return "Rate limited. Try again later"
+        case .rateLimited(let until):
+            let remaining = until.timeIntervalSince(now)
+            if remaining <= 0 { return "Rate limited. Retrying on next refresh" }
+            if remaining < 60 { return "Rate limited. Retry in \(Int(remaining.rounded(.up)))s" }
+            return "Rate limited. Retry in \(Formatting.duration(remaining))"
         case .unauthorized:
             return "Token expired. Re-login to Claude Code"
         case .serverError(let code):

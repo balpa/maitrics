@@ -14,7 +14,7 @@ public final class ClaudeDataManager {
     public private(set) var isLoading = false
     public private(set) var error: String?
     public var hasToken: Bool { UsageAPIClient.hasToken }
-    public var apiError: UsageAPIClient.APIError? { UsageAPIClient.lastError }
+    public private(set) var apiError: UsageAPIClient.APIError?
 
     private let settings: AppSettings
     private let usageIndex: JSONLUsageIndex
@@ -302,14 +302,15 @@ public final class ClaudeDataManager {
 
             // Fetch API data + check pricing updates (pricing runs unawaited so
             // a slow ~1.7MB price download never blocks the dashboard refresh)
-            let newUsageData = await UsageAPIClient.fetchUsage()
+            let usageFetch = await UsageAPIClient.fetchUsage()
             let newProfileData = await UsageAPIClient.fetchProfile()
             Task { await PricingUpdater.checkForUpdates(settings: settings) }
 
             let finalStats = newStatsCache
             let finalSessions = newSessions
             let finalError = newError
-            let finalUsage = newUsageData
+            let finalUsage = usageFetch.usage
+            let finalAPIError = usageFetch.error
             let finalProfile = newProfileData
             let finalLive = newLiveDailyTokens
             let finalLiveModelUsage = newLiveDailyModelUsage
@@ -323,6 +324,7 @@ public final class ClaudeDataManager {
                 self.sessionUsage = finalSessionUsage
                 self.lastSessionActivity = finalLastActivity
                 if let finalUsage { self.usageData = finalUsage }
+                self.apiError = finalAPIError
                 if let finalProfile { self.profileData = finalProfile }
                 if let finalError { self.error = finalError }
                 self.lastRefresh = Date()

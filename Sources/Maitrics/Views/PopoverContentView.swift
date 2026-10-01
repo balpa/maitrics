@@ -24,7 +24,7 @@ struct PopoverContentView: View {
                         onToggleSettings: { showSettings = false }
                     )
                     Divider().opacity(0.06)
-                    SettingsView(settings: settings, onCostModeChange: { dataManager.refresh() })
+                    SettingsView(settings: settings, apiError: dataManager.apiError, onCostModeChange: { dataManager.refresh() })
                 }
             } else {
                 ScrollView(.vertical, showsIndicators: false) {
