@@ -79,7 +79,7 @@ final class StatusBarController {
     }
 
     private func evaluateAlerts() {
-        guard settings.notificationsEnabled, let usage = dataManager.usageData else { return }
+        guard let usage = dataManager.usageData else { return }
         var state = settings.alertState
         let alerts = UsageAlertEvaluator.evaluate(
             usage.trackedWindows,
@@ -88,7 +88,8 @@ final class StatusBarController {
             notifyOnReset: settings.notifyOnReset
         )
         settings.alertState = state
-        NotificationService.shared.deliver(alerts)
+        // The state also advances while alerts are off, so a reset seen then does not alert later.
+        if settings.notificationsEnabled { NotificationService.shared.deliver(alerts) }
     }
 
     private func setupStatusItem() {
