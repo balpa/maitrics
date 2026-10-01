@@ -76,10 +76,10 @@ struct UsageTrendChartView: View {
     }
 
     private var hoveredItem: UsagePoint? {
-        guard let hoveredDate else { return nil }
-        return displayData.min(by: {
-            abs($0.date.timeIntervalSince(hoveredDate)) < abs($1.date.timeIntervalSince(hoveredDate))
-        })
+        guard let hoveredDate,
+              let bucket = Calendar.current.dateInterval(of: isHourly ? .hour : .day, for: hoveredDate)?.start
+        else { return nil }
+        return displayData.first { $0.date == bucket }
     }
 
     var body: some View {
