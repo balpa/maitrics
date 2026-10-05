@@ -275,4 +275,75 @@ final class JSONLUsageIndexTests: XCTestCase {
         try FileManager.default.removeItem(at: file)
         XCTAssertNil(JSONLUsageIndex(cacheURL: cacheURL).tokenUsage(forPath: file.path))
     }
+
+    func testFileUsageGroupsByLocalHour() throws {
+        let utc = TimeZone(identifier: "UTC")!
+        let file = tempDir.appendingPathComponent("s.jsonl")
+        try write([
+            assistantLine(model: "opus", input: 10, output: 20, cacheRead: 5, timestamp: "2026-04-01T10:05:00Z"),
+            assistantLine(model: "opus", input: 1, output: 2, timestamp: "2026-04-01T10:55:00Z"),
+            assistantLine(model: "sonnet", input: 3, output: 4, timestamp: "2026-04-01T11:00:00Z"),
+        ], to: file)
+
+        let usage = try XCTUnwrap(makeIndex(timeZone: utc).fileUsage(forPath: file.path))
+        XCTAssertEqual(usage.byHour["2026-04-01 10"]?["opus"]?.outputTokens, 22)
+        XCTAssertEqual(usage.byHour["2026-04-01 10"]?["opus"]?.cacheReadInputTokens, 5)
+        XCTAssertEqual(usage.byHour["2026-04-01 11"]?["sonnet"]?.inputTokens, 3)
+        XCTAssertEqual(usage.byDay["2026-04-01"]?["opus"]?.inputTokens, 11)
+    }
+
+    func testHourKeyFollowsFractionalOffsetTimeZone() throws {
+        let kolkata = TimeZone(identifier: "Asia/Kolkata")!
+        let file = tempDir.appendingPathComponent("s.jsonl")
+        // 18:29Z and 18:31Z are 23:59 and 00:01 in +05:30
+        try write([
+            assistantLine(model: "opus", input: 1, output: 1, timestamp: "2026-03-01T18:29:00Z"),
+            assistantLine(model: "opus", input: 2, output: 2, timestamp: "2026-03-01T18:31:00Z"),
+        ], to: file)
+
+        let usage = try XCTUnwrap(makeIndex(timeZone: kolkata).fileUsage(forPath: file.path))
+        XCTAssertEqual(usage.byHour["2026-03-01 23"]?["opus"]?.inputTokens, 1)
+        XCTAssertEqual(usage.byHour["2026-03-02 00"]?["opus"]?.inputTokens, 2)
+    }
+
+    private func blockLine(id: String, request: String = "req", input: Int, output: Int, cacheRead: Int = 0, timestamp: String) -> String {
+        """
+        {"type":"assistant","requestId":"\(request)","message":{"id":"\(id)","model":"opus","usage":{"input_tokens":\(input),"output_tokens":\(output),"cache_creation_input_tokens":0,"cache_read_input_tokens":\(cacheRead)}},"timestamp":"\(timestamp)"}
+        """
+    }
+
+    func testContentBlockLinesOfOneMessageCountOnce() throws {
+        let file = tempDir.appendingPathComponent("s.jsonl")
+        try write([
+            blockLine(id: "m1", input: 10, output: 5, cacheRead: 100, timestamp: "2026-04-01T10:00:00Z"),
+            blockLine(id: "m1", input: 10, output: 40, cacheRead: 100, timestamp: "2026-04-01T10:00:01Z"),
+            blockLine(id: "m2", input: 3, output: 7, timestamp: "2026-04-01T10:01:00Z"),
+        ], to: file)
+
+        let usage = try XCTUnwrap(makeIndex().tokenUsage(forPath: file.path))
+        XCTAssertEqual(usage.totalInputTokens, 13)
+        XCTAssertEqual(usage.totalOutputTokens, 47, "the last line of a message has its final usage")
+        XCTAssertEqual(usage.totalCacheReadTokens, 100)
+        XCTAssertEqual(try SessionParser.parseTokenUsage(fileURL: file).totalOutputTokens, 47)
+    }
+
+    func testMessageSplitAcrossAppendsCountsOnce() throws {
+        let file = tempDir.appendingPathComponent("s.jsonl")
+        try write([blockLine(id: "m1", input: 10, output: 5, timestamp: "2026-04-01T10:00:00Z")], to: file)
+        let index = makeIndex(timeZone: TimeZone(identifier: "UTC")!)
+        XCTAssertEqual(index.tokenUsage(forPath: file.path)?.totalOutputTokens, 5)
+
+        try append([blockLine(id: "m1", input: 10, output: 40, timestamp: "2026-04-01T10:00:01Z")], to: file)
+        XCTAssertEqual(index.tokenUsage(forPath: file.path)?.totalOutputTokens, 40)
+        XCTAssertEqual(index.fileUsage(forPath: file.path)?.byHour["2026-04-01 10"]?["opus"]?.outputTokens, 40)
+    }
+
+    func testSameMessageIdWithOtherRequestCountsAgain() throws {
+        let file = tempDir.appendingPathComponent("s.jsonl")
+        try write([
+            blockLine(id: "m1", request: "r1", input: 1, output: 1, timestamp: "2026-04-01T10:00:00Z"),
+            blockLine(id: "m1", request: "r2", input: 1, output: 1, timestamp: "2026-04-01T10:00:01Z"),
+        ], to: file)
+        XCTAssertEqual(makeIndex().tokenUsage(forPath: file.path)?.totalOutputTokens, 2)
+    }
 }

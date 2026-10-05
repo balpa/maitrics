@@ -206,4 +206,24 @@ final class SessionDiscoveryTests: XCTestCase {
         let sessions = try SessionDiscovery.discoverSessions(claudeProjectsDir: nonexistent)
         XCTAssertTrue(sessions.isEmpty)
     }
+
+    func testDiscoversSubagentTranscriptsOfASession() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("maitrics-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let projectDir = tmp.appendingPathComponent("-Users-test-Documents-sub-project")
+        let subagents = projectDir.appendingPathComponent("sess-1/subagents")
+        try FileManager.default.createDirectory(at: subagents, withIntermediateDirectories: true)
+        try Data(#"{"type":"user","message":{"content":"Parent"}}"#.utf8).write(to: projectDir.appendingPathComponent("sess-1.jsonl"))
+        try Data("{}".utf8).write(to: subagents.appendingPathComponent("agent-b.jsonl"))
+        try Data("{}".utf8).write(to: subagents.appendingPathComponent("agent-a.jsonl"))
+        try Data("{}".utf8).write(to: subagents.appendingPathComponent("agent-a.meta.json"))
+
+        let sessions = try SessionDiscovery.discoverSessions(claudeProjectsDir: tmp)
+
+        XCTAssertEqual(sessions.count, 1, "subagent transcripts are not sessions of their own")
+        XCTAssertEqual(sessions[0].subagentPaths.map { ($0 as NSString).lastPathComponent }, ["agent-a.jsonl", "agent-b.jsonl"])
+        XCTAssertEqual(sessions[0].usagePaths.count, 3)
+    }
 }

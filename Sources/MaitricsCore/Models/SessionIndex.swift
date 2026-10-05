@@ -30,4 +30,8 @@ public struct DiscoveredSession: Sendable {
     public let projectPath: String?
     public let projectName: String
     public let jsonlPath: String?
+    /// Transcripts of the subagents (Task tool) that this session started.
+    public var subagentPaths: [String] = []
+
+    public var usagePaths: [String] { (jsonlPath.map { [$0] } ?? []) + subagentPaths }
 }

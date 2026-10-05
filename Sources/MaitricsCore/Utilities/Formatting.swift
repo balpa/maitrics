@@ -12,8 +12,16 @@ public enum Formatting {
         return "\(count)"
     }
 
+    private static let wholeDollarFormatter: NumberFormatter = {
+        let f = NumberFormatter()
+        f.locale = Locale(identifier: "en_US")
+        f.numberStyle = .decimal
+        f.maximumFractionDigits = 0
+        return f
+    }()
+
     public static func cost(_ amount: Double) -> String {
-        if amount >= 100 { return String(format: "$%.0f", amount) }
+        if amount >= 100 { return "$" + (wholeDollarFormatter.string(from: NSNumber(value: amount)) ?? String(format: "%.0f", amount)) }
         else if amount >= 0.01 { return String(format: "$%.2f", amount) }
         else if amount > 0 { return "<$0.01" }
         return "$0.00"
@@ -33,7 +41,10 @@ public enum Formatting {
     public static func timeUntil(_ date: Date) -> String {
         let seconds = date.timeIntervalSince(Date())
         guard seconds > 0 else { return "now" }
+        return duration(seconds)
+    }
 
+    public static func duration(_ seconds: TimeInterval) -> String {
         let totalMinutes = Int(seconds) / 60
         let hours = totalMinutes / 60
         let minutes = totalMinutes % 60

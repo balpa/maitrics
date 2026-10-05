@@ -66,4 +66,12 @@ final class CostCalculatorTests: XCTestCase {
         let cost = CostCalculator.cost(for: usage, pricing: pricing)
         XCTAssertEqual(cost, 300.0, accuracy: 0.01)
     }
+
+    func testModelTokensCostExcludesCacheByDefault() {
+        let tokens = ModelTokens(inputTokens: 1_000_000, outputTokens: 1_000_000, cacheReadInputTokens: 1_000_000, cacheCreationInputTokens: 1_000_000)
+        // Opus: $5 + $25
+        XCTAssertEqual(CostCalculator.cost(for: tokens, model: "claude-opus-5"), 30, accuracy: 0.01)
+        // Opus with cache: $5 + $25 + $0.50 + $6.25
+        XCTAssertEqual(CostCalculator.cost(for: tokens, model: "claude-opus-5", includeCache: true), 36.75, accuracy: 0.01)
+    }
 }

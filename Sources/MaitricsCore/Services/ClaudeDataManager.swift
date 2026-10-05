@@ -5,13 +5,16 @@ public final class ClaudeDataManager {
     public private(set) var statsCache: StatsCache?
     public private(set) var recentSessions: [RecentSession] = []
     public private(set) var liveDailyTokens: [String: [String: Int]] = [:] // date -> model -> tokens
+    public private(set) var liveDailyModelUsage: [String: [String: ModelTokens]] = [:] // date -> model -> full breakdown
+    public private(set) var sessionUsage: [SessionUsage] = []
+    public private(set) var lastSessionActivity: Date?
     public private(set) var usageData: UsageData?
     public private(set) var profileData: ProfileData?
     public private(set) var lastRefresh: Date?
     public private(set) var isLoading = false
     public private(set) var error: String?
     public var hasToken: Bool { UsageAPIClient.hasToken }
-    public var apiError: UsageAPIClient.APIError? { UsageAPIClient.lastError }
+    public private(set) var apiError: UsageAPIClient.APIError?
 
     private let settings: AppSettings
     private let usageIndex: JSONLUsageIndex
@@ -65,6 +68,16 @@ public final class ClaudeDataManager {
     }
 
     public var todayEstimatedCost: Double {
+        let todayStr = Self.dateString(for: Date())
+        // Prefer live per-model token data: it has a real input/output split
+        // per day, so cost doesn't need the stats cache's aggregate ratio guess
+        // — and it's the only source available when the stats cache is stale,
+        // missing, or hasn't been written by the CLI yet.
+        if let live = liveDailyModelUsage[todayStr] {
+            return live.reduce(0.0) { total, pair in
+                total + estimatedCost(pair.value, model: pair.key)
+            }
+        }
         guard let statsCache else { return 0 }
         return estimateDailyCost(dailyTokens: todayModelTokens, modelUsage: statsCache.modelUsage)
     }
@@ -83,42 +96,128 @@ public final class ClaudeDataManager {
         }
     }
 
-    /// Merge stats-cache data with live session data for a complete daily totals picture
-    public func dailyTotals(days: Int?) -> [(date: Date, tokens: Int)] {
-        let formatter = Self.dateFormatter
-        var byDate: [String: Int] = [:]
-
-        // Start with stats-cache data
-        if let statsCache {
-            for day in statsCache.dailyModelTokens {
-                byDate[day.date] = day.tokensByModel.values.reduce(0, +)
-            }
-        }
-
-        // Overlay live session data (takes precedence for dates it covers)
-        for (date, modelTokens) in liveDailyTokens {
-            let liveTotal = modelTokens.values.reduce(0, +)
-            byDate[date, default: 0] = max(byDate[date] ?? 0, liveTotal)
-        }
-
-        var results: [(date: Date, tokens: Int)] = byDate.compactMap { dateStr, tokens in
-            guard let date = formatter.date(from: dateStr) else { return nil }
-            return (date: date, tokens: tokens)
-        }
-        results.sort { $0.date < $1.date }
-
-        if let days {
-            let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date.distantPast
-            results = results.filter { $0.date >= cutoff }
-        }
-        return results
+    /// For each day, the source (stats cache or live scan) with more tokens is used.
+    /// `days`: calendar days to today. `nil`: all history.
+    public func dailyUsage(days: Int?) -> [UsagePoint] {
+        let cutoff = days.map(Self.startOfRange)
+        return dayRecords().compactMap { dateStr, record in
+            guard let date = Self.dateFormatter.date(from: dateStr) else { return nil }
+            if let cutoff, date < cutoff { return nil }
+            return UsagePoint(date: date, tokens: record.tokens, cost: record.cost)
+        }.sorted { $0.date < $1.date }
     }
 
-    public var iconThresholdLevel: ThresholdLevel {
-        let tokens = todayTokens
-        if tokens >= settings.thresholdYellow { return .red }
-        if tokens >= settings.thresholdGreen { return .yellow }
-        return .green
+    public func usageSummary(days: Int?) -> UsageSummary {
+        let cutoff = days.map(Self.startOfRange)
+        var summary = UsageSummary()
+        var costByFamily: [String: Double] = [:]
+        var firstDay: Date?
+        for (dateStr, record) in dayRecords() {
+            guard let date = Self.dateFormatter.date(from: dateStr) else { continue }
+            if let cutoff, date < cutoff { continue }
+            guard record.tokens > 0 else { continue }
+            summary.totalTokens += record.tokens
+            summary.totalCost += record.cost
+            summary.activeDays += 1
+            firstDay = min(firstDay ?? date, date)
+            for (family, cost) in record.costByFamily { costByFamily[family, default: 0] += cost }
+        }
+        // Idle days are part of the average.
+        let rangeDays: Int
+        if let days {
+            rangeDays = days
+        } else if let firstDay {
+            rangeDays = (Calendar.current.dateComponents([.day], from: firstDay, to: Calendar.current.startOfDay(for: Date())).day ?? 0) + 1
+        } else {
+            rangeDays = 0
+        }
+        summary.averageDailyCost = rangeDays > 0 ? summary.totalCost / Double(rangeDays) : 0
+        if let top = costByFamily.max(by: { $0.value < $1.value }), summary.totalCost > 0 {
+            summary.topModel = top.key
+            summary.topModelShare = top.value / summary.totalCost
+        }
+        return summary
+    }
+
+    public func hourlyUsage(hours: Int) -> [UsagePoint] {
+        var byHour: [String: (tokens: Int, cost: Double)] = [:]
+        for session in sessionUsage {
+            for (hour, models) in session.byHour {
+                for (model, tokens) in models {
+                    byHour[hour, default: (0, 0)].tokens += tokens.inputTokens + tokens.outputTokens
+                    byHour[hour, default: (0, 0)].cost += estimatedCost(tokens, model: model)
+                }
+            }
+        }
+        let calendar = Calendar.current
+        guard let currentHour = calendar.dateInterval(of: .hour, for: Date())?.start else { return [] }
+        return (0..<hours).reversed().compactMap { offset in
+            guard let date = calendar.date(byAdding: .hour, value: -offset, to: currentHour) else { return nil }
+            let value = byHour[Self.hourFormatter.string(from: date)] ?? (0, 0)
+            return UsagePoint(date: date, tokens: value.tokens, cost: value.cost)
+        }
+    }
+
+    public func projectBreakdown(days: Int) -> [ProjectUsage] {
+        let cutoffKey = Self.dateString(for: Self.startOfRange(days: days))
+        var byProject: [String: ProjectUsage] = [:]
+        for session in sessionUsage {
+            var tokens = 0
+            var cost = 0.0
+            for (day, models) in session.byDay where day >= cutoffKey {
+                for (model, t) in models {
+                    tokens += t.inputTokens + t.outputTokens
+                    cost += estimatedCost(t, model: model)
+                }
+            }
+            guard tokens > 0 else { continue }
+            var project = byProject[session.projectName] ?? ProjectUsage(name: session.projectName)
+            project.tokens += tokens
+            project.cost += cost
+            project.sessions += 1
+            byProject[session.projectName] = project
+        }
+        return byProject.values.sorted { ($0.cost, $0.tokens) > ($1.cost, $1.tokens) }
+    }
+
+    private struct DayRecord {
+        var tokens = 0
+        var cost = 0.0
+        var costByFamily: [String: Double] = [:]
+    }
+
+    private func dayRecords() -> [String: DayRecord] {
+        var records: [String: DayRecord] = [:]
+        if let statsCache {
+            for day in statsCache.dailyModelTokens {
+                var record = DayRecord()
+                for (model, tokens) in day.tokensByModel {
+                    let cost = estimateDailyCost(dailyTokens: [model: tokens], modelUsage: statsCache.modelUsage)
+                    record.tokens += tokens
+                    record.cost += cost
+                    record.costByFamily[Formatting.shortModelName(model), default: 0] += cost
+                }
+                records[day.date] = record
+            }
+        }
+        for (date, models) in liveDailyModelUsage {
+            var record = DayRecord()
+            for (model, tokens) in models {
+                let cost = estimatedCost(tokens, model: model)
+                record.tokens += tokens.inputTokens + tokens.outputTokens
+                record.cost += cost
+                record.costByFamily[Formatting.shortModelName(model), default: 0] += cost
+            }
+            if record.tokens >= (records[date]?.tokens ?? 0) { records[date] = record }
+        }
+        return records
+    }
+
+    /// `days: 7` gives 7 days, today included.
+    static func startOfRange(days: Int) -> Date {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        return calendar.date(byAdding: .day, value: -(max(days, 1) - 1), to: today) ?? today
     }
 
     // MARK: - Refresh
@@ -173,10 +272,15 @@ public final class ClaudeDataManager {
                 lastComputedDate: newStatsCache?.lastComputedDate,
                 sessions: discovered
             )
+            let newLiveDailyModelUsage = self.computeLiveDailyModelUsage(
+                lastComputedDate: newStatsCache?.lastComputedDate,
+                sessions: discovered
+            )
+            let newSessionUsage = self.computeSessionUsage(sessions: discovered)
 
             let newSessions: [RecentSession] = discovered.prefix(5).map { session in
-                let tokenUsage = session.jsonlPath.flatMap { self.usageIndex.tokenUsage(forPath: $0) }
-                let cost = tokenUsage.map { CostCalculator.cost(for: $0, customPricing: settings.customPricing) } ?? 0
+                let tokenUsage = SessionTokenUsage.merged(session.usagePaths.compactMap { self.usageIndex.tokenUsage(forPath: $0) })
+                let cost = tokenUsage.map { CostCalculator.cost(for: $0, customPricing: settings.customPricing, includeCache: settings.includeCacheInCost) } ?? 0
                 let totalTokens = tokenUsage?.displayTokens ?? 0
                 return RecentSession(
                     sessionId: session.sessionId,
@@ -192,27 +296,35 @@ public final class ClaudeDataManager {
             // An empty discovery means the projects directory was unreadable, not
             // that every session vanished — pruning on that would wipe the index.
             if !discovered.isEmpty {
-                self.usageIndex.prune(keeping: Set(discovered.compactMap { $0.jsonlPath }))
+                self.usageIndex.prune(keeping: Set(discovered.flatMap(\.usagePaths)))
             }
             self.usageIndex.save()
 
             // Fetch API data + check pricing updates (pricing runs unawaited so
             // a slow ~1.7MB price download never blocks the dashboard refresh)
-            let newUsageData = await UsageAPIClient.fetchUsage()
+            let usageFetch = await UsageAPIClient.fetchUsage()
             let newProfileData = await UsageAPIClient.fetchProfile()
             Task { await PricingUpdater.checkForUpdates(settings: settings) }
 
             let finalStats = newStatsCache
             let finalSessions = newSessions
             let finalError = newError
-            let finalUsage = newUsageData
+            let finalUsage = usageFetch.usage
+            let finalAPIError = usageFetch.error
             let finalProfile = newProfileData
             let finalLive = newLiveDailyTokens
+            let finalLiveModelUsage = newLiveDailyModelUsage
+            let finalSessionUsage = newSessionUsage
+            let finalLastActivity = discovered.first?.modified
             await MainActor.run {
                 self.statsCache = finalStats
                 self.recentSessions = finalSessions
                 self.liveDailyTokens = finalLive
+                self.liveDailyModelUsage = finalLiveModelUsage
+                self.sessionUsage = finalSessionUsage
+                self.lastSessionActivity = finalLastActivity
                 if let finalUsage { self.usageData = finalUsage }
+                self.apiError = finalAPIError
                 if let finalProfile { self.profileData = finalProfile }
                 if let finalError { self.error = finalError }
                 self.lastRefresh = Date()
@@ -223,27 +335,56 @@ public final class ClaudeDataManager {
 
     // MARK: - Live Daily Tokens from JSONL
 
+    /// The day after which the stats cache stops covering usage — from here on
+    /// out, live JSONL scanning is the only source. No cache at all means the
+    /// whole last-30-days window is "the gap".
+    private func liveGapCutoffDate(lastComputedDate: String?) -> Date {
+        let formatter = Self.dateFormatter
+        if let lcd = lastComputedDate, let d = formatter.date(from: lcd) {
+            return d
+        }
+        return Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date.distantPast
+    }
+
     /// Fill the gap between the stats cache's last computed day and today from
     /// the live session transcripts. The heavy lifting is delegated to
     /// `JSONLUsageIndex`, which only reads bytes appended since the last pass.
     private func computeLiveDailyTokens(lastComputedDate: String?, sessions: [DiscoveredSession]) -> [String: [String: Int]] {
-        let formatter = Self.dateFormatter
-        let cutoffDate: Date
-        if let lcd = lastComputedDate, let d = formatter.date(from: lcd) {
-            cutoffDate = d
-        } else {
-            // No cache at all — compute last 30 days
-            cutoffDate = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date.distantPast
-        }
-
+        let cutoffDate = liveGapCutoffDate(lastComputedDate: lastComputedDate)
         // Only process if there's actually a gap
         guard cutoffDate < Date() else { return [:] }
 
-        let paths = sessions.filter { $0.modified > cutoffDate }.compactMap { $0.jsonlPath }
+        let paths = sessions.filter { $0.modified > cutoffDate }.flatMap(\.usagePaths)
         return usageIndex.dailyTokens(forPaths: paths, after: cutoffDate)
     }
 
+    /// Same gap-filling as `computeLiveDailyTokens`, but keeping the full
+    /// input/output/cache breakdown per model so cost can be computed directly
+    /// instead of estimated from an aggregate ratio.
+    private func computeLiveDailyModelUsage(lastComputedDate: String?, sessions: [DiscoveredSession]) -> [String: [String: ModelTokens]] {
+        let cutoffDate = liveGapCutoffDate(lastComputedDate: lastComputedDate)
+        guard cutoffDate < Date() else { return [:] }
+
+        let paths = sessions.filter { $0.modified > cutoffDate }.flatMap(\.usagePaths)
+        return usageIndex.dailyModelUsage(forPaths: paths, after: cutoffDate)
+    }
+
+    private func computeSessionUsage(sessions: [DiscoveredSession]) -> [SessionUsage] {
+        let cutoff = Self.startOfRange(days: 30)
+        return sessions.filter { $0.modified >= cutoff }.compactMap { session in
+            let files = session.usagePaths.compactMap { usageIndex.fileUsage(forPath: $0) }
+            guard !files.isEmpty else { return nil }
+            return SessionUsage(sessionId: session.sessionId, projectName: session.projectName,
+                                byDay: ModelTokens.merged(files.map(\.byDay)),
+                                byHour: ModelTokens.merged(files.map(\.byHour)))
+        }
+    }
+
     // MARK: - Helpers
+
+    private func estimatedCost(_ tokens: ModelTokens, model: String) -> Double {
+        CostCalculator.cost(for: tokens, model: model, customPricing: settings.customPricing, includeCache: settings.includeCacheInCost)
+    }
 
     /// Estimate daily cost from input+output token totals per model.
     /// Uses weighted average of input/output pricing based on the aggregate ratio.
@@ -262,8 +403,15 @@ public final class ClaudeDataManager {
                     let outputRatio = Double(usage.outputTokens) / Double(io)
                     let estimatedInput = Double(dailyTotal) * inputRatio
                     let estimatedOutput = Double(dailyTotal) * outputRatio
-                    return total + (estimatedInput / scale * pricing.inputPer1M)
-                                 + (estimatedOutput / scale * pricing.outputPer1M)
+                    var cost = (estimatedInput / scale * pricing.inputPer1M)
+                             + (estimatedOutput / scale * pricing.outputPer1M)
+                    // The stats cache has no daily cache tokens. Use the same aggregate ratio.
+                    if settings.includeCacheInCost {
+                        let perIOToken = Double(dailyTotal) / Double(io)
+                        cost += Double(usage.cacheReadInputTokens) * perIOToken / scale * pricing.cacheReadPer1M
+                              + Double(usage.cacheCreationInputTokens) * perIOToken / scale * pricing.cacheWritePer1M
+                    }
+                    return total + cost
                 }
             }
             // Fallback: assume all output (worst case)
@@ -282,14 +430,57 @@ public final class ClaudeDataManager {
 
     /// Shared with `JSONLUsageIndex`, which produces the day keys read back here.
     private static let dateFormatter = JSONLUsageIndex.makeDayFormatter()
+    private static let hourFormatter = JSONLUsageIndex.makeHourFormatter()
 
     static func dateString(for date: Date) -> String {
         dateFormatter.string(from: date)
     }
 }
 
-public enum ThresholdLevel: Sendable {
-    case green, yellow, red
+public struct UsagePoint: Identifiable, Sendable, Equatable {
+    public var id: Date { date }
+    public let date: Date
+    public let tokens: Int
+    public let cost: Double
+
+    public init(date: Date, tokens: Int, cost: Double) {
+        self.date = date
+        self.tokens = tokens
+        self.cost = cost
+    }
+}
+
+public struct UsageSummary: Sendable, Equatable {
+    public var totalCost: Double = 0
+    public var totalTokens: Int = 0
+    public var averageDailyCost: Double = 0
+    public var activeDays: Int = 0
+    public var topModel: String?
+    public var topModelShare: Double = 0
+
+    public init() {}
+}
+
+public struct ProjectUsage: Identifiable, Sendable, Equatable {
+    public var id: String { name }
+    public let name: String
+    public var tokens: Int = 0
+    public var cost: Double = 0
+    public var sessions: Int = 0
+
+    public init(name: String, tokens: Int = 0, cost: Double = 0, sessions: Int = 0) {
+        self.name = name
+        self.tokens = tokens
+        self.cost = cost
+        self.sessions = sessions
+    }
+}
+
+public struct SessionUsage: Sendable {
+    public let sessionId: String
+    public let projectName: String
+    public let byDay: [String: [String: ModelTokens]]
+    public let byHour: [String: [String: ModelTokens]]
 }
 
 public struct RecentSession: Identifiable, Sendable {

@@ -8,6 +8,9 @@ final class StatusBarController {
     private var popover: NSPopover!
     private var fileWatcher: FileWatcher?
     private var eventMonitor: Any?
+    private var refreshTimer: Timer?
+    private var wakeObserver: NSObjectProtocol?
+    private let popoverState = PopoverState()
     let dataManager: ClaudeDataManager
     let settings: AppSettings
 
@@ -27,6 +30,8 @@ final class StatusBarController {
         setupStatusItem()
         setupPopover()
         setupFileWatcher()
+        setupRefreshTimer()
+        NotificationService.shared.configure()
         dataManager.refresh()
         updateStatusText()
         observeDataChanges()
@@ -40,9 +45,51 @@ final class StatusBarController {
         } onChange: { [weak self] in
             DispatchQueue.main.async {
                 self?.updateStatusText()
+                self?.evaluateAlerts()
                 self?.observeDataChanges()
             }
         }
+    }
+
+    private func setupRefreshTimer() {
+        let timer = Timer(timeInterval: RefreshPolicy.tickInterval, repeats: true) { [weak self] _ in
+            self?.refreshIfDue()
+        }
+        timer.tolerance = 5
+        RunLoop.main.add(timer, forMode: .common)
+        refreshTimer = timer
+
+        // The network is often not ready at wake. Wait a short time.
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { self?.dataManager.refresh() }
+        }
+    }
+
+    private func refreshIfDue() {
+        let mode = settings.refreshMode
+        let active = mode == .adaptive && RefreshPolicy.isClaudeActive(
+            processRunning: ClaudeProcessDetector.isClaudeRunning(),
+            lastSessionActivity: dataManager.lastSessionActivity
+        )
+        if RefreshPolicy.isDue(interval: mode.interval(claudeActive: active), lastRefresh: dataManager.lastRefresh) {
+            dataManager.refresh()
+        }
+    }
+
+    private func evaluateAlerts() {
+        guard let usage = dataManager.usageData else { return }
+        var state = settings.alertState
+        let alerts = UsageAlertEvaluator.evaluate(
+            usage.trackedWindows,
+            state: &state,
+            thresholds: settings.alertThresholds,
+            notifyOnReset: settings.notifyOnReset
+        )
+        settings.alertState = state
+        // The state also advances while alerts are off, so a reset seen then does not alert later.
+        if settings.notificationsEnabled { NotificationService.shared.deliver(alerts) }
     }
 
     private func setupStatusItem() {
@@ -62,10 +109,16 @@ final class StatusBarController {
         let hostingController = NSHostingController(
             rootView: PopoverContentView(
                 dataManager: dataManager,
-                settings: settings
+                settings: settings,
+                state: popoverState,
+                onHeightChange: { [weak self] height in
+                    self?.popover.contentSize = NSSize(width: 400, height: height)
+                }
             )
             .preferredColorScheme(.dark)
         )
+        // The popover size comes only from onHeightChange. Two size sources cause a layout loop.
+        hostingController.sizingOptions = []
         popover.contentViewController = hostingController
     }
 
@@ -226,6 +279,7 @@ final class StatusBarController {
         if popover.isShown {
             closePopover()
         } else {
+            popoverState.showDetails = false
             dataManager.refresh()
             updateStatusText()
             if let button = statusItem.button {

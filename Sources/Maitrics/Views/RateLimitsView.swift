@@ -14,13 +14,17 @@ struct RateLimitsView: View {
                     label: "Session",
                     sublabel: "5-hour window",
                     percentage: usage.fiveHour.utilization,
-                    resetsAt: usage.fiveHour.resetsAt
+                    resetsAt: usage.fiveHour.resetsAt,
+                    pace: UsagePace.compute(utilization: usage.fiveHour.utilization,
+                                            resetsAt: usage.fiveHour.resetsAt, window: UsagePace.sessionWindow)
                 )
                 UsageBarRow(
                     label: "Weekly",
                     sublabel: "7-day window",
                     percentage: usage.sevenDay.utilization,
-                    resetsAt: usage.sevenDay.resetsAt
+                    resetsAt: usage.sevenDay.resetsAt,
+                    pace: UsagePace.compute(utilization: usage.sevenDay.utilization,
+                                            resetsAt: usage.sevenDay.resetsAt, window: UsagePace.weeklyWindow)
                 )
 
                 // Per-model quotas — newer API shape (`limits` array)
@@ -128,6 +132,7 @@ struct UsageBarRow: View {
     let sublabel: String
     let percentage: Double
     let resetsAt: Date?
+    var pace: UsagePace? = nil
     var barColors: (Color, Color)? = nil
 
     private var barColor: Color {
@@ -175,9 +180,27 @@ struct UsageBarRow: View {
                             )
                         )
                         .frame(width: geo.size.width * min(CGFloat(percentage) / 100, 1), height: 6)
+                    if let pace {
+                        RoundedRectangle(cornerRadius: 0.5)
+                            .fill(Color.white.opacity(0.7))
+                            .frame(width: 1.5, height: 10)
+                            .offset(x: geo.size.width * min(CGFloat(pace.expectedPercent) / 100, 1) - 0.75)
+                    }
                 }
             }
             .frame(height: 6)
+
+            if let pace {
+                Text(pace.summary)
+                    .font(.system(size: 9))
+                    .foregroundColor(paceColor(pace))
+            }
         }
+    }
+
+    private func paceColor(_ pace: UsagePace) -> Color {
+        if pace.runsOutIn != nil || pace.isAhead { return Color(red: 255/255, green: 176/255, blue: 85/255) }
+        if pace.isBehind { return Color(red: 74/255, green: 222/255, blue: 128/255).opacity(0.8) }
+        return Color(white: 0.55)
     }
 }

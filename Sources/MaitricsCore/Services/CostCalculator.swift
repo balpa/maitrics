@@ -60,15 +60,23 @@ public enum CostCalculator {
         }
     }
 
-    /// Cost from input+output tokens only (excludes cache — appropriate for subscription users)
-    public static func cost(for session: SessionTokenUsage, customPricing: [String: PricingTier]? = nil) -> Double {
+    /// `includeCache: false` counts input and output only (the app default).
+    /// `true` gives the API-equivalent cost.
+    public static func cost(for session: SessionTokenUsage, customPricing: [String: PricingTier]? = nil, includeCache: Bool = false) -> Double {
         session.byModel.reduce(0.0) { total, pair in
-            let p = pricing(for: pair.key, customPricing: customPricing)
-            let tokens = pair.value
-            let scale = 1_000_000.0
-            return total
-                + (Double(tokens.inputTokens) / scale * p.inputPer1M)
-                + (Double(tokens.outputTokens) / scale * p.outputPer1M)
+            total + cost(for: pair.value, model: pair.key, customPricing: customPricing, includeCache: includeCache)
         }
+    }
+
+    public static func cost(for tokens: ModelTokens, model: String, customPricing: [String: PricingTier]? = nil, includeCache: Bool = false) -> Double {
+        let p = pricing(for: model, customPricing: customPricing)
+        let scale = 1_000_000.0
+        var total = (Double(tokens.inputTokens) / scale * p.inputPer1M)
+                  + (Double(tokens.outputTokens) / scale * p.outputPer1M)
+        if includeCache {
+            total += (Double(tokens.cacheReadInputTokens) / scale * p.cacheReadPer1M)
+                   + (Double(tokens.cacheCreationInputTokens) / scale * p.cacheWritePer1M)
+        }
+        return total
     }
 }

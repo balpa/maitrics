@@ -49,23 +49,30 @@ public enum UsageAPIClient {
     private static let profileEndpoint = URL(string: "https://api.anthropic.com/api/oauth/profile")!
     private static let cacheFile = URL(fileURLWithPath: "/tmp/claude/maitrics-usage-cache.json")
     private static let profileCacheFile = URL(fileURLWithPath: "/tmp/claude/maitrics-profile-cache.json")
-    private static let cacheTTL: TimeInterval = 60
+    /// Less than the 60s refresh interval, so each scheduled refresh gets new data.
+    private static let cacheTTL: TimeInterval = 45
     private static let profileCacheTTL: TimeInterval = 3600 // 1 hour for profile
 
     // MARK: - Public
 
-    public static func fetchUsage() async -> UsageData? {
-        if let cached = readCache() { return cached }
+    /// `error` is the state of this fetch. It is `nil` when the data is new or comes from a cache that is not expired.
+    public static func fetchUsage() async -> (usage: UsageData?, error: APIError?) {
+        if let cached = readCache() { return (cached, nil) }
+        if let rateLimitedUntil, Date() < rateLimitedUntil {
+            return (readCache(ignoreExpiry: true), .rateLimited(until: rateLimitedUntil))
+        }
 
-        guard let token = resolveOAuthToken() else { return nil }
+        guard let token = resolveOAuthToken() else { return (nil, nil) }
 
         do {
             let data = try await apiRequest(url: usageEndpoint, token: token)
             try? FileManager.default.createDirectory(at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? data.write(to: cacheFile)
-            return parseUsageResponse(data)
+            return (parseUsageResponse(data), nil)
+        } catch let error as APIError {
+            return (readCache(ignoreExpiry: true), error)
         } catch {
-            return readCache(ignoreExpiry: true)
+            return (readCache(ignoreExpiry: true), .networkError(error.localizedDescription))
         }
     }
 
@@ -88,14 +95,13 @@ public enum UsageAPIClient {
     // MARK: - HTTP
 
     public enum APIError: Error, Sendable {
-        case rateLimited(retryAfter: Int?)
+        case rateLimited(until: Date)
         case unauthorized
         case serverError(Int)
         case networkError(String)
     }
 
-    /// Last API error for UI display
-    public static var lastError: APIError?
+    private static var rateLimitedUntil: Date?
 
     /// `timeoutInterval` alone only caps *inactivity*, so a server that drips a
     /// byte at a time can keep a request alive indefinitely. The resource timeout
@@ -123,17 +129,15 @@ public enum UsageAPIClient {
 
         switch http.statusCode {
         case 200:
-            lastError = nil
             return data
         case 401:
-            lastError = .unauthorized
             throw APIError.unauthorized
         case 429:
             let retryAfter = http.value(forHTTPHeaderField: "Retry-After").flatMap(Int.init)
-            lastError = .rateLimited(retryAfter: retryAfter)
-            throw APIError.rateLimited(retryAfter: retryAfter)
+            let until = Date().addingTimeInterval(TimeInterval(retryAfter ?? 300))
+            rateLimitedUntil = until
+            throw APIError.rateLimited(until: until)
         default:
-            lastError = .serverError(http.statusCode)
             throw APIError.serverError(http.statusCode)
         }
     }

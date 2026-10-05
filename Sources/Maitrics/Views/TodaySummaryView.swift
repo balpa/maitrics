@@ -5,16 +5,27 @@ struct TodaySummaryView: View {
     let cost: Double
     let tokens: Int
     let sessions: Int
+    let monthCost: Double
+    let monthTokens: Int
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionLabel(text: "Today")
-            HStack(spacing: 10) {
-                StatCard(value: Formatting.cost(cost), label: "EST. COST",
-                         accentColor: Color(red: 74/255, green: 222/255, blue: 128/255))
-                StatCard(value: Formatting.tokens(tokens), label: "TOKENS",
-                         accentColor: Color(red: 96/255, green: 165/255, blue: 250/255))
-                StatCard(value: "\(sessions)", label: "SESSIONS",
-                         accentColor: Color(red: 192/255, green: 132/255, blue: 252/255))
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                SectionLabel(text: "Usage")
+                Spacer()
+                Text("\(sessions) session\(sessions == 1 ? "" : "s") today")
+                    .font(.system(size: 10))
+                    .foregroundColor(Color(white: 0.55))
+            }
+            Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 10) {
+                GridRow {
+                    SummaryValue(label: "Today", value: Formatting.cost(cost))
+                    SummaryValue(label: "Last 30 days cost", value: Formatting.cost(monthCost))
+                }
+                GridRow {
+                    SummaryValue(label: "Today tokens", value: Formatting.tokens(tokens))
+                    SummaryValue(label: "Last 30 days tokens", value: Formatting.tokens(monthTokens))
+                }
             }
         }
         .padding(.horizontal, 20)
@@ -22,25 +33,20 @@ struct TodaySummaryView: View {
     }
 }
 
-struct StatCard: View {
-    let value: String
+private struct SummaryValue: View {
     let label: String
-    let accentColor: Color
+    let value: String
+
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(value)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
-                .foregroundColor(accentColor)
             Text(label)
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundColor(Color(white: 0.7))
-                .tracking(0.5)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(Color(white: 0.6))
+            Text(value)
+                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                .foregroundColor(.white)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(Color.white.opacity(0.04))
-        .cornerRadius(10)
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.05), lineWidth: 1))
     }
 }
 

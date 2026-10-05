@@ -7,16 +7,6 @@ public final class AppSettings: @unchecked Sendable {
         self.defaults = defaults
     }
 
-    public var thresholdGreen: Int {
-        get { defaults.object(forKey: "thresholdGreen") as? Int ?? 100_000 }
-        set { defaults.set(newValue, forKey: "thresholdGreen") }
-    }
-
-    public var thresholdYellow: Int {
-        get { defaults.object(forKey: "thresholdYellow") as? Int ?? 500_000 }
-        set { defaults.set(newValue, forKey: "thresholdYellow") }
-    }
-
     public var claudeDataPath: String {
         get { defaults.string(forKey: "claudeDataPath") ?? defaultClaudePath }
         set { defaults.set(newValue, forKey: "claudeDataPath") }
@@ -45,6 +35,41 @@ public final class AppSettings: @unchecked Sendable {
     public var launchAtLogin: Bool {
         get { defaults.bool(forKey: "launchAtLogin") }
         set { defaults.set(newValue, forKey: "launchAtLogin") }
+    }
+
+    /// `false`: cost counts input and output tokens only. `true`: API-equivalent cost with cache tokens.
+    public var includeCacheInCost: Bool {
+        get { defaults.bool(forKey: "includeCacheInCost") }
+        set { defaults.set(newValue, forKey: "includeCacheInCost") }
+    }
+
+    public var refreshMode: RefreshMode {
+        get { defaults.string(forKey: "refreshMode").flatMap(RefreshMode.init(rawValue:)) ?? .adaptive }
+        set { defaults.set(newValue.rawValue, forKey: "refreshMode") }
+    }
+
+    public var notificationsEnabled: Bool {
+        get { defaults.object(forKey: "notificationsEnabled") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "notificationsEnabled") }
+    }
+
+    public var alertThresholds: [Int] {
+        get { (defaults.array(forKey: "alertThresholds") as? [Int])?.sorted() ?? [80, 95] }
+        set { defaults.set(Array(Set(newValue)).sorted(), forKey: "alertThresholds") }
+    }
+
+    public var notifyOnReset: Bool {
+        get { defaults.object(forKey: "notifyOnReset") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "notifyOnReset") }
+    }
+
+    public var alertState: UsageAlertState {
+        get {
+            guard let data = defaults.data(forKey: "alertState"),
+                  let state = try? JSONDecoder().decode(UsageAlertState.self, from: data) else { return UsageAlertState() }
+            return state
+        }
+        set { defaults.set(try? JSONEncoder().encode(newValue), forKey: "alertState") }
     }
 
     private var defaultClaudePath: String {
