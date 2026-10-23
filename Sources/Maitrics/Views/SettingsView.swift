@@ -168,7 +168,7 @@ struct SettingsView: View {
     }
 
 
-    @State private var isRelogging = false
+    @State private var reloginError: String?
 
     private var connectionStatus: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -228,29 +228,22 @@ struct SettingsView: View {
                     .foregroundColor(Color(white: 0.5))
             }
 
-            if isRelogging {
-                HStack(spacing: 4) {
-                    ProgressView().controlSize(.small)
-                    Text("Opening Claude Code login...")
-                        .font(.system(size: 9))
-                        .foregroundColor(Color(white: 0.6))
-                }
+            if let reloginError {
+                Text(reloginError)
+                    .font(.system(size: 9))
+                    .foregroundColor(Color(red: 255/255, green: 176/255, blue: 85/255))
             }
         }
     }
 
     private func relogin() {
-        isRelogging = true
-        // Launch `claude` CLI which triggers the OAuth flow in browser
-        Task.detached {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            process.arguments = ["claude", "--login"]
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-            try? process.run()
-            process.waitUntilExit()
-            await MainActor.run { isRelogging = false }
+        do {
+            try ClaudeCLI.openLogin()
+            reloginError = nil
+        } catch ClaudeCLI.LoginError.cliNotFound {
+            reloginError = "Claude Code CLI not found"
+        } catch {
+            reloginError = "Couldn't open Terminal for login"
         }
     }
 
