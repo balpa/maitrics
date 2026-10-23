@@ -1,4 +1,5 @@
 import Foundation
+import Security
 
 // MARK: - Models
 
@@ -58,11 +59,14 @@ public enum UsageAPIClient {
     /// `error` is the state of this fetch. It is `nil` when the data is new or comes from a cache that is not expired.
     public static func fetchUsage() async -> (usage: UsageData?, error: APIError?) {
         if let cached = readCache() { return (cached, nil) }
-        if let rateLimitedUntil, Date() < rateLimitedUntil {
-            return (readCache(ignoreExpiry: true), .rateLimited(until: rateLimitedUntil))
-        }
 
-        guard let token = resolveOAuthToken() else { return (nil, nil) }
+        let token: String
+        switch preflight(resolveOAuthToken(), rateLimited: rateLimited, now: Date()) {
+        case .noCredentials: return (nil, nil)
+        case .expired: return (readCache(ignoreExpiry: true), .unauthorized)
+        case .rateLimited(let until): return (readCache(ignoreExpiry: true), .rateLimited(until: until))
+        case .send(let value): token = value
+        }
 
         do {
             let data = try await apiRequest(url: usageEndpoint, token: token)
@@ -80,7 +84,12 @@ public enum UsageAPIClient {
         // Check cache first (profile changes rarely)
         if let cached = readProfileCache() { return cached }
 
-        guard let token = resolveOAuthToken() else { return nil }
+        let token: String
+        switch preflight(resolveOAuthToken(), rateLimited: nil, now: Date()) {
+        case .noCredentials: return nil
+        case .expired, .rateLimited: return readProfileCache(ignoreExpiry: true)
+        case .send(let value): token = value
+        }
 
         do {
             let data = try await apiRequest(url: profileEndpoint, token: token)
@@ -101,7 +110,28 @@ public enum UsageAPIClient {
         case networkError(String)
     }
 
-    private static var rateLimitedUntil: Date?
+    /// Keyed by token so a re-login is not held back by the old token's backoff.
+    private static var rateLimited: (until: Date, token: String)?
+
+    enum Preflight: Equatable {
+        case noCredentials
+        case expired
+        case rateLimited(until: Date)
+        case send(token: String)
+    }
+
+    /// The API answers an expired token with 429, not 401, so it must never be sent.
+    static func preflight(_ state: OAuthTokenState, rateLimited: (until: Date, token: String)?, now: Date) -> Preflight {
+        switch state {
+        case .missing: return .noCredentials
+        case .expired: return .expired
+        case .valid(let token):
+            if let rateLimited, rateLimited.token == token, now < rateLimited.until {
+                return .rateLimited(until: rateLimited.until)
+            }
+            return .send(token: token)
+        }
+    }
 
     /// `timeoutInterval` alone only caps *inactivity*, so a server that drips a
     /// byte at a time can keep a request alive indefinitely. The resource timeout
@@ -135,75 +165,117 @@ public enum UsageAPIClient {
         case 429:
             let retryAfter = http.value(forHTTPHeaderField: "Retry-After").flatMap(Int.init)
             let until = Date().addingTimeInterval(TimeInterval(retryAfter ?? 300))
-            rateLimitedUntil = until
+            rateLimited = (until, token)
             throw APIError.rateLimited(until: until)
         default:
             throw APIError.serverError(http.statusCode)
         }
     }
 
-    /// Whether a valid OAuth token exists (for UI to show connect state)
+    /// Whether Claude Code credentials exist at all, expired or not (for UI to show connect state)
     public static var hasToken: Bool {
-        resolveOAuthToken() != nil
+        hasCredentials(resolveOAuthToken())
+    }
+
+    static func hasCredentials(_ state: OAuthTokenState) -> Bool {
+        state != .missing
     }
 
     // MARK: - OAuth Token Resolution (via `security` CLI — no keychain prompt)
 
-    static func resolveOAuthToken() -> String? {
+    public enum OAuthTokenState: Equatable, Sendable {
+        case valid(String)
+        case expired
+        case missing
+    }
+
+    private static let keychainService = "Claude Code-credentials"
+    /// A token this close to expiry can lapse in flight and come back as a 429.
+    private static let expiryMargin: TimeInterval = 60
+
+    static func resolveOAuthToken() -> OAuthTokenState {
         if let envToken = ProcessInfo.processInfo.environment["CLAUDE_CODE_OAUTH_TOKEN"],
            !envToken.isEmpty {
-            return envToken
+            return .valid(envToken)
         }
 
-        if let keychainToken = readFromKeychainCLI() {
-            return keychainToken
+        var blobs = readFromKeychainCLI()
+        if let fileBlob = FileManager.default.contents(atPath: NSHomeDirectory() + "/.claude/.credentials.json") {
+            blobs.append(fileBlob)
+        }
+        return selectToken(fromCredentials: blobs, now: Date())
+    }
+
+    /// Several entries can share the service name (e.g. one left behind by an
+    /// older Claude Code under another account), so the first match may be a
+    /// token Claude Code no longer refreshes. Picks the unexpired one that
+    /// lives longest. An entry without an expiry is only a last resort.
+    static func selectToken(fromCredentials blobs: [Data], now: Date) -> OAuthTokenState {
+        var sawExpired = false
+        var best: (token: String, expiresAt: Date)?
+        var untimed: String?
+
+        for blob in blobs {
+            guard let json = try? JSONSerialization.jsonObject(with: blob) as? [String: Any],
+                  let oauth = json["claudeAiOauth"] as? [String: Any],
+                  let token = oauth["accessToken"] as? String,
+                  !token.isEmpty else { continue }
+
+            guard let millis = oauth["expiresAt"] as? Double else {
+                if untimed == nil { untimed = token }
+                continue
+            }
+            let expiresAt = Date(timeIntervalSince1970: millis / 1000)
+            if expiresAt <= now.addingTimeInterval(expiryMargin) {
+                sawExpired = true
+                continue
+            }
+            if best.map({ expiresAt > $0.expiresAt }) ?? true {
+                best = (token, expiresAt)
+            }
         }
 
-        if let fileToken = readFromCredentialsFile() {
-            return fileToken
-        }
-
-        return nil
+        if let token = best?.token ?? untimed { return .valid(token) }
+        return sawExpired ? .expired : .missing
     }
 
     /// Uses `security find-generic-password` CLI tool — same as statusline.sh.
-    /// This avoids the keychain password prompt that SecItemCopyMatching triggers.
-    private static func readFromKeychainCLI() -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
-        process.arguments = ["find-generic-password", "-s", "Claude Code-credentials", "-w"]
+    /// This avoids the keychain password prompt that SecItemCopyMatching triggers
+    /// when it reads the secret; listing the account attributes alone does not.
+    private static func readFromKeychainCLI() -> [Data] {
+        let accounts = keychainAccounts()
+        let argumentSets = accounts.isEmpty ? [[]] : accounts.map { ["-a", $0] }
+        return argumentSets.compactMap { account in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+            process.arguments = ["find-generic-password", "-s", keychainService] + account + ["-w"]
 
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = FileHandle.nullDevice
 
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch { return nil }
+            do {
+                try process.run()
+                process.waitUntilExit()
+            } catch { return nil }
 
-        guard process.terminationStatus == 0 else { return nil }
-
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        guard let blob = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !blob.isEmpty,
-              let jsonData = blob.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-              let oauth = json["claudeAiOauth"] as? [String: Any],
-              let token = oauth["accessToken"] as? String,
-              !token.isEmpty else { return nil }
-
-        return token
+            guard process.terminationStatus == 0 else { return nil }
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            return data.isEmpty ? nil : data
+        }
     }
 
-    private static func readFromCredentialsFile() -> String? {
-        let path = NSHomeDirectory() + "/.claude/.credentials.json"
-        guard let data = FileManager.default.contents(atPath: path),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let oauth = json["claudeAiOauth"] as? [String: Any],
-              let token = oauth["accessToken"] as? String,
-              !token.isEmpty else { return nil }
-        return token
+    private static func keychainAccounts() -> [String] {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecMatchLimit as String: kSecMatchLimitAll,
+            kSecReturnAttributes as String: true,
+        ]
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let items = result as? [[String: Any]] else { return [] }
+        return items.compactMap { $0[kSecAttrAccount as String] as? String }
     }
 
     // MARK: - Cache
