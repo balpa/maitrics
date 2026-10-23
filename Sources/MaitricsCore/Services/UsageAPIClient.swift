@@ -61,15 +61,11 @@ public enum UsageAPIClient {
         if let cached = readCache() { return (cached, nil) }
 
         let token: String
-        switch resolveOAuthToken() {
-        case .missing: return (nil, nil)
-        // The API answers an expired token with 429, not 401, so it must never be sent.
+        switch preflight(resolveOAuthToken(), rateLimited: rateLimited, now: Date()) {
+        case .noCredentials: return (nil, nil)
         case .expired: return (readCache(ignoreExpiry: true), .unauthorized)
-        case .valid(let value): token = value
-        }
-
-        if let rateLimited, rateLimited.token == token, Date() < rateLimited.until {
-            return (readCache(ignoreExpiry: true), .rateLimited(until: rateLimited.until))
+        case .rateLimited(let until): return (readCache(ignoreExpiry: true), .rateLimited(until: until))
+        case .send(let value): token = value
         }
 
         do {
@@ -89,10 +85,10 @@ public enum UsageAPIClient {
         if let cached = readProfileCache() { return cached }
 
         let token: String
-        switch resolveOAuthToken() {
-        case .missing: return nil
-        case .expired: return readProfileCache(ignoreExpiry: true)
-        case .valid(let value): token = value
+        switch preflight(resolveOAuthToken(), rateLimited: nil, now: Date()) {
+        case .noCredentials: return nil
+        case .expired, .rateLimited: return readProfileCache(ignoreExpiry: true)
+        case .send(let value): token = value
         }
 
         do {
@@ -116,6 +112,26 @@ public enum UsageAPIClient {
 
     /// Keyed by token so a re-login is not held back by the old token's backoff.
     private static var rateLimited: (until: Date, token: String)?
+
+    enum Preflight: Equatable {
+        case noCredentials
+        case expired
+        case rateLimited(until: Date)
+        case send(token: String)
+    }
+
+    /// The API answers an expired token with 429, not 401, so it must never be sent.
+    static func preflight(_ state: OAuthTokenState, rateLimited: (until: Date, token: String)?, now: Date) -> Preflight {
+        switch state {
+        case .missing: return .noCredentials
+        case .expired: return .expired
+        case .valid(let token):
+            if let rateLimited, rateLimited.token == token, now < rateLimited.until {
+                return .rateLimited(until: rateLimited.until)
+            }
+            return .send(token: token)
+        }
+    }
 
     /// `timeoutInterval` alone only caps *inactivity*, so a server that drips a
     /// byte at a time can keep a request alive indefinitely. The resource timeout
@@ -158,7 +174,11 @@ public enum UsageAPIClient {
 
     /// Whether Claude Code credentials exist at all, expired or not (for UI to show connect state)
     public static var hasToken: Bool {
-        resolveOAuthToken() != .missing
+        hasCredentials(resolveOAuthToken())
+    }
+
+    static func hasCredentials(_ state: OAuthTokenState) -> Bool {
+        state != .missing
     }
 
     // MARK: - OAuth Token Resolution (via `security` CLI — no keychain prompt)
@@ -170,6 +190,8 @@ public enum UsageAPIClient {
     }
 
     private static let keychainService = "Claude Code-credentials"
+    /// A token this close to expiry can lapse in flight and come back as a 429.
+    private static let expiryMargin: TimeInterval = 60
 
     static func resolveOAuthToken() -> OAuthTokenState {
         if let envToken = ProcessInfo.processInfo.environment["CLAUDE_CODE_OAUTH_TOKEN"],
@@ -187,10 +209,11 @@ public enum UsageAPIClient {
     /// Several entries can share the service name (e.g. one left behind by an
     /// older Claude Code under another account), so the first match may be a
     /// token Claude Code no longer refreshes. Picks the unexpired one that
-    /// lives longest.
+    /// lives longest. An entry without an expiry is only a last resort.
     static func selectToken(fromCredentials blobs: [Data], now: Date) -> OAuthTokenState {
         var sawExpired = false
         var best: (token: String, expiresAt: Date)?
+        var untimed: String?
 
         for blob in blobs {
             guard let json = try? JSONSerialization.jsonObject(with: blob) as? [String: Any],
@@ -198,18 +221,21 @@ public enum UsageAPIClient {
                   let token = oauth["accessToken"] as? String,
                   !token.isEmpty else { continue }
 
-            let expiresAt = (oauth["expiresAt"] as? Double).map { Date(timeIntervalSince1970: $0 / 1000) }
-                ?? .distantFuture
-            if expiresAt <= now {
+            guard let millis = oauth["expiresAt"] as? Double else {
+                if untimed == nil { untimed = token }
+                continue
+            }
+            let expiresAt = Date(timeIntervalSince1970: millis / 1000)
+            if expiresAt <= now.addingTimeInterval(expiryMargin) {
                 sawExpired = true
                 continue
             }
-            if best == nil || expiresAt > best!.expiresAt {
+            if best.map({ expiresAt > $0.expiresAt }) ?? true {
                 best = (token, expiresAt)
             }
         }
 
-        if let best { return .valid(best.token) }
+        if let token = best?.token ?? untimed { return .valid(token) }
         return sawExpired ? .expired : .missing
     }
 
@@ -217,8 +243,8 @@ public enum UsageAPIClient {
     /// This avoids the keychain password prompt that SecItemCopyMatching triggers
     /// when it reads the secret; listing the account attributes alone does not.
     private static func readFromKeychainCLI() -> [Data] {
-        var argumentSets = keychainAccounts().map { ["-a", $0] }
-        argumentSets.append([])
+        let accounts = keychainAccounts()
+        let argumentSets = accounts.isEmpty ? [[]] : accounts.map { ["-a", $0] }
         return argumentSets.compactMap { account in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/security")

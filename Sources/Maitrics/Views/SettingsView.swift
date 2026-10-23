@@ -234,16 +234,21 @@ struct SettingsView: View {
                     .foregroundColor(Color(red: 255/255, green: 176/255, blue: 85/255))
             }
         }
+        .onAppear { reloginError = nil }
     }
 
     private func relogin() {
-        do {
-            try ClaudeCLI.openLogin()
-            reloginError = nil
-        } catch ClaudeCLI.LoginError.cliNotFound {
-            reloginError = "Claude Code CLI not found"
-        } catch {
-            reloginError = "Couldn't open Terminal for login"
+        Task.detached {
+            let message: String?
+            do {
+                try ClaudeCLI.openLogin()
+                message = nil
+            } catch ClaudeCLI.LoginError.cliNotFound {
+                message = "Claude Code CLI not found"
+            } catch {
+                message = "Couldn't open Terminal for login"
+            }
+            await MainActor.run { reloginError = message }
         }
     }
 
